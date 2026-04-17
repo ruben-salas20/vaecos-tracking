@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+reports/
+logs/
+v0.2/reports/
+v0.2/data/
+v0.2/updates/
+backups/
+releases/
