@@ -39,6 +39,7 @@ class Settings:
     sqlite_db_path: Path
     updates_dir: Path
     update_repo: str
+    update_github_token: str
     excluded_statuses: set[str]
 
 
@@ -68,6 +69,7 @@ def load_settings(base_dir: Path) -> Settings:
         ),
         updates_dir=Path(os.getenv("V02_UPDATES_DIR", str(base_dir / "updates"))),
         update_repo=os.getenv("V02_UPDATE_REPO", "").strip(),
+        update_github_token=os.getenv("V02_UPDATE_GITHUB_TOKEN", "").strip(),
         excluded_statuses=set(DEFAULT_EXCLUDED_STATUSES),
     )
 

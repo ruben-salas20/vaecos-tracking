@@ -46,6 +46,7 @@ V02_SAVE_RAW_HTML=false
 V02_SQLITE_DB_PATH=v0.2/data/vaecos_tracking.db
 V02_UPDATES_DIR=v0.2/updates
 V02_UPDATE_REPO=owner/repo
+V02_UPDATE_GITHUB_TOKEN=
 ```
 
 ## Uso
@@ -209,6 +210,7 @@ V02_UPDATES_DIR=v0.2/updates
 Notas:
 
 - `V02_UPDATE_REPO` debe ir en formato `owner/repo`
+- si el repo es privado, define `V02_UPDATE_GITHUB_TOKEN` con un token que tenga permiso `repo`
 - `check-update` solo consulta la ultima release publicada
 - `download-update` descarga el primer asset `.zip` de la release si existe; si no, usa el `zipball` de GitHub
 - la actualizacion descargada no se aplica sola todavia; se deja en `V02_UPDATES_DIR` para reemplazo controlado

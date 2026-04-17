@@ -84,6 +84,8 @@ def _fetch_update_info(settings: Settings) -> UpdateInfo | str:
             "User-Agent": "VAECOS-v0.2-update-checker",
         },
     )
+    if settings.update_github_token:
+        req.add_header("Authorization", f"Bearer {settings.update_github_token}")
     try:
         with request.urlopen(req, timeout=30) as response:
             data = json.loads(response.read().decode("utf-8"))
