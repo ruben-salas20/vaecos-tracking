@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
 from vaecos_v02.app.config import Settings
-from vaecos_v02.core.models import ProcessingResult, RunContext
+from vaecos_v02.core.models import EffiTrackingData, ProcessingResult, RunContext
 from vaecos_v02.core.rules import decide_status
 from vaecos_v02.providers.effi_provider import EffiProvider
 from vaecos_v02.providers.notion_provider import NotionProvider
 from vaecos_v02.reporting.report_builder import write_reports
 from vaecos_v02.storage.db import clear_history, connect, init_db
 from vaecos_v02.storage.repositories import RunRepository
+
+_MAX_EFFI_WORKERS = 8
 
 
 def execute_tracking(
@@ -64,6 +67,26 @@ def execute_tracking(
     run_id = repository.create_run(started_at, dry_run)
 
     record_map = {record.guia.upper(): record for record in records}
+
+    # Phase 1: fetch all guides from Effi in parallel.
+    # Only fetch guides that have a matching Notion record.
+    guides_to_fetch = [g for g in guides if record_map.get(g.upper()) is not None]
+    tracking_map: dict[str, EffiTrackingData | Exception] = {}
+    if guides_to_fetch:
+        workers = min(len(guides_to_fetch), _MAX_EFFI_WORKERS)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            future_to_guide = {
+                pool.submit(effi.fetch_tracking, guide): guide
+                for guide in guides_to_fetch
+            }
+            for future in as_completed(future_to_guide):
+                guide = future_to_guide[future]
+                try:
+                    tracking_map[guide.upper()] = future.result()
+                except Exception as exc:  # noqa: BLE001
+                    tracking_map[guide.upper()] = exc
+
+    # Phase 2: process results and write to DB sequentially (SQLite is not thread-safe).
     results: list[ProcessingResult] = []
     for guide in guides:
         record = record_map.get(guide.upper())
@@ -83,41 +106,11 @@ def execute_tracking(
             repository.save_result(run_id, result)
             results.append(result)
             continue
-        try:
-            tracking = effi.fetch_tracking(guide)
-            repository.save_tracking(run_id, guide, tracking)
-            decision = decide_status(tracking, run_context.today)
-            if decision.review_needed:
-                resultado = "manual_review"
-            elif decision.estado_propuesto == record.estado_novedad:
-                resultado = "unchanged"
-            else:
-                resultado = "changed"
 
-            actualizacion_notion = "No aplica"
-            if resultado == "changed":
-                if dry_run:
-                    actualizacion_notion = "Pendiente por dry-run"
-                else:
-                    notion.update_page_status(
-                        record.page_id,
-                        decision.estado_propuesto or record.estado_novedad,
-                        run_context.today.isoformat(),
-                    )
-                    actualizacion_notion = "Actualizado"
+        tracking_or_exc = tracking_map.get(guide.upper())
 
-            result = ProcessingResult(
-                cliente=record.nombre,
-                guia=record.guia,
-                estado_notion_actual=record.estado_novedad,
-                estado_effi_actual=tracking.estado_actual,
-                estado_propuesto=decision.estado_propuesto,
-                resultado=resultado,
-                motivo=decision.motivo,
-                requiere_accion=decision.requiere_accion,
-                actualizacion_notion=actualizacion_notion,
-            )
-        except Exception as exc:  # noqa: BLE001
+        if tracking_or_exc is None or isinstance(tracking_or_exc, Exception):
+            error_msg = str(tracking_or_exc) if isinstance(tracking_or_exc, Exception) else "Sin resultado de fetch."
             result = ProcessingResult(
                 cliente=record.nombre,
                 guia=record.guia,
@@ -128,8 +121,58 @@ def execute_tracking(
                 motivo="Error durante la consulta o el parsing de Effi.",
                 requiere_accion="Revisar manualmente",
                 actualizacion_notion="No actualizado",
-                error=str(exc),
+                error=error_msg,
             )
+        else:
+            tracking: EffiTrackingData = tracking_or_exc
+            repository.save_tracking(run_id, guide, tracking)
+
+            if tracking.estado_actual is None:
+                # HTTP OK but couldn't extract the current status — likely an HTML structure change.
+                result = ProcessingResult(
+                    cliente=record.nombre,
+                    guia=record.guia,
+                    estado_notion_actual=record.estado_novedad,
+                    estado_effi_actual=None,
+                    estado_propuesto=None,
+                    resultado="parse_error",
+                    motivo="Effi respondio pero no se pudo extraer el estado actual. Posible cambio en la estructura del HTML.",
+                    requiere_accion="Verificar con --save-raw-html y revisar el parser",
+                    actualizacion_notion="No actualizado",
+                )
+            else:
+                decision = decide_status(tracking, run_context.today)
+                if decision.review_needed:
+                    resultado = "manual_review"
+                elif decision.estado_propuesto == record.estado_novedad:
+                    resultado = "unchanged"
+                else:
+                    resultado = "changed"
+
+                actualizacion_notion = "No aplica"
+                if resultado == "changed":
+                    if dry_run:
+                        actualizacion_notion = "Pendiente por dry-run"
+                    else:
+                        notion.update_page_status(
+                            record.page_id,
+                            decision.estado_propuesto or record.estado_novedad,
+                            run_context.today.isoformat(),
+                        )
+                        actualizacion_notion = "Actualizado"
+
+                result = ProcessingResult(
+                    cliente=record.nombre,
+                    guia=record.guia,
+                    estado_notion_actual=record.estado_novedad,
+                    estado_effi_actual=tracking.estado_actual,
+                    estado_propuesto=decision.estado_propuesto,
+                    resultado=resultado,
+                    motivo=decision.motivo,
+                    requiere_accion=decision.requiere_accion,
+                    actualizacion_notion=actualizacion_notion,
+                )
+
         repository.save_result(run_id, result)
         results.append(result)
 

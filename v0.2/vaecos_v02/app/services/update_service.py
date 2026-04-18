@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import tempfile
+import zipfile
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from urllib import error, request
 
@@ -116,6 +120,105 @@ def _fetch_update_info(settings: Settings) -> UpdateInfo | str:
         html_url=str(data.get("html_url", "")).strip(),
         download_url=download_url,
         update_available=_compare_versions(latest_version, settings.app_version) > 0,
+    )
+
+
+def apply_update(settings: Settings, v02_dir: Path) -> str:
+    """Find the latest downloaded zip, back up current code, and apply it.
+
+    Preserves: .env, data/ (SQLite), reports/, backups/.
+    Replaces:  vaecos_v02/, cli.py, version.json.
+    """
+    updates_dir = settings.updates_dir
+    if not updates_dir.exists():
+        return (
+            "No se encontro el directorio de actualizaciones.\n"
+            "Ejecuta primero: python v0.2/cli.py download-update"
+        )
+
+    zips = sorted(
+        updates_dir.glob("*.zip"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not zips:
+        return (
+            "No hay archivos de actualizacion descargados.\n"
+            "Ejecuta primero: python v0.2/cli.py download-update"
+        )
+
+    latest_zip = zips[0]
+    project_root = v02_dir.parent
+
+    # --- Backup current code ---
+    backup_dir = project_root / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_name = f"vaecos_v0.2_backup_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.zip"
+    backup_path = backup_dir / backup_name
+
+    code_sources = [
+        v02_dir / "vaecos_v02",
+        v02_dir / "cli.py",
+        v02_dir / "version.json",
+    ]
+    with zipfile.ZipFile(backup_path, "w", zipfile.ZIP_DEFLATED) as bz:
+        for src in code_sources:
+            if src.is_file():
+                bz.write(src, src.relative_to(project_root))
+            elif src.is_dir():
+                for file_path in src.rglob("*"):
+                    if file_path.is_file() and "__pycache__" not in str(file_path):
+                        bz.write(file_path, file_path.relative_to(project_root))
+
+    # --- Extract zip and detect layout ---
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        try:
+            with zipfile.ZipFile(latest_zip, "r") as zf:
+                zf.extractall(tmp_path)
+        except zipfile.BadZipFile:
+            backup_path.unlink(missing_ok=True)
+            return f"El archivo {latest_zip.name} no es un zip valido."
+
+        # Look for the vaecos_v02 package inside the extracted content.
+        candidates = [
+            p for p in tmp_path.rglob("vaecos_v02") if p.is_dir()
+        ]
+        if not candidates:
+            backup_path.unlink(missing_ok=True)
+            return (
+                f"No se encontro el paquete 'vaecos_v02' en {latest_zip.name}.\n"
+                "Asegurate de que el zip contiene el codigo correcto."
+            )
+
+        # Use the shallowest match (closest to the root of the zip).
+        zip_v02_dir = min(candidates, key=lambda p: len(p.parts)).parent
+
+        # Replace vaecos_v02 package.
+        src_pkg = zip_v02_dir / "vaecos_v02"
+        dst_pkg = v02_dir / "vaecos_v02"
+        if dst_pkg.exists():
+            shutil.rmtree(dst_pkg)
+        shutil.copytree(
+            src_pkg,
+            dst_pkg,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
+
+        # Replace cli.py if present in zip.
+        src_cli = zip_v02_dir / "cli.py"
+        if src_cli.exists():
+            shutil.copy2(src_cli, v02_dir / "cli.py")
+
+        # Replace version.json if present in zip.
+        src_version = zip_v02_dir / "version.json"
+        if src_version.exists():
+            shutil.copy2(src_version, v02_dir / "version.json")
+
+    return (
+        f"Actualizacion aplicada desde: {latest_zip.name}\n"
+        f"Backup guardado en:           {backup_path}\n"
+        "Reinicia la aplicacion para que los cambios tomen efecto."
     )
 
 

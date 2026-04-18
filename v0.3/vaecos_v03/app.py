@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import secrets
 import sys
+import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -15,8 +17,12 @@ if str(V02_ROOT) not in sys.path:
 from vaecos_v02.app.config import load_settings as load_v02_settings
 from vaecos_v02.app.services.run_tracking import execute_tracking
 from vaecos_v03.config import Settings, load_settings
-from vaecos_v03.render import alert, button, card_grid, hero, h, layout, panel, p, table
+from vaecos_v03.render import alert, button, card_grid, hero, h, layout, mode_badge, panel, p, result_pill, table
 from vaecos_v03.storage import DashboardRepository
+
+# In-memory store for background run jobs: token -> {status, run_id, error}
+_jobs: dict[str, dict] = {}
+_jobs_lock = threading.Lock()
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,10 +73,15 @@ def _make_handler(repo: DashboardRepository):
             try:
                 if path == "/":
                     return self._send_html(_render_home(repo, query))
+                if path == "/attention":
+                    return self._send_html(_render_attention(repo))
                 if path == "/runs":
                     return self._send_html(_render_runs(repo, query))
                 if path == "/run/new":
                     return self._send_html(_render_run_form(query))
+                if path.startswith("/run/progress/"):
+                    token = path.split("/")[-1]
+                    return self._send_html(_render_run_progress(token))
                 if path.startswith("/runs/"):
                     run_id = int(path.split("/")[-1])
                     return self._send_html(_render_run_detail(repo, run_id, query))
@@ -106,19 +117,32 @@ def _make_handler(repo: DashboardRepository):
             save_raw_html = bool(form.get("save_raw_html"))
             all_active = not guides
 
-            settings = load_v02_settings(V02_ROOT)
-            _, _, _ = execute_tracking(
-                settings=settings,
-                selected_guides=guides,
-                all_active=all_active,
-                dry_run=(mode != "apply"),
-                output_dir=None,
-                save_raw_html=save_raw_html,
-            )
-            latest = repo.latest_run()
-            run_id = int(latest["id"]) if latest else 0
+            token = secrets.token_hex(16)
+            with _jobs_lock:
+                _jobs[token] = {"status": "running", "run_id": None, "error": None}
+
+            def _run_job() -> None:
+                try:
+                    settings = load_v02_settings(V02_ROOT)
+                    execute_tracking(
+                        settings=settings,
+                        selected_guides=guides,
+                        all_active=all_active,
+                        dry_run=(mode != "apply"),
+                        output_dir=None,
+                        save_raw_html=save_raw_html,
+                    )
+                    latest = repo.latest_run()
+                    run_id = int(latest["id"]) if latest else 0
+                    with _jobs_lock:
+                        _jobs[token] = {"status": "done", "run_id": run_id, "error": None}
+                except Exception as exc:  # noqa: BLE001
+                    with _jobs_lock:
+                        _jobs[token] = {"status": "error", "run_id": None, "error": str(exc)}
+
+            threading.Thread(target=_run_job, daemon=True).start()
             self.send_response(HTTPStatus.SEE_OTHER)
-            self.send_header("Location", f"/runs/{run_id}?created=1")
+            self.send_header("Location", f"/run/progress/{token}")
             self.end_headers()
 
         def _send_html(self, html: str) -> None:
@@ -142,47 +166,60 @@ def _make_handler(repo: DashboardRepository):
 
 def _render_home(repo: DashboardRepository, query: dict[str, list[str]]) -> str:
     latest = repo.latest_run()
-    actions = button("/run/new", "Nueva corrida") + button("/runs", "Ver corridas", "ghost")
-    body = hero(
-        "Centro operativo",
-        "Aplicacion web local para ejecutar seguimientos, revisar resultados y navegar historico desde SQLite.",
-        actions,
+    actions = (
+        button("/attention", "Ver que requiere atencion")
+        + button("/run/new", "Nueva corrida", "ghost")
+        + button("/runs", "Historial", "ghost")
     )
-    if _q(query, "created"):
-        body += alert("Corrida ejecutada correctamente desde la aplicacion.", "ok")
     if latest is None:
-        body += panel(p("No hay corridas registradas en SQLite."))
+        body = hero("Centro operativo", "No hay corridas registradas en SQLite.", actions)
         return layout("Centro operativo", body)
 
-    counts = repo.result_counts(int(latest["id"]))
-    statuses = repo.proposed_status_counts(int(latest["id"]))
-    top_guides = repo.top_guides_with_changes(limit=10)
+    run_id = int(latest["id"])
+    counts_rows = repo.result_counts(run_id)
+    count_map = {str(row["resultado"]): int(row["total"]) for row in counts_rows}
+    needs_attention = sum(v for k, v in count_map.items() if k != "unchanged")
+    unchanged = count_map.get("unchanged", 0)
+    duration = repo.run_duration_seconds(run_id)
+    duration_text = _format_duration(duration) if duration else ""
+    subtitle = f"Corrida #{latest['id']} · {_fmt_ts(str(latest['started_at']))}" + (f" · {duration_text}" if duration_text else "")
+
+    body = hero("Centro operativo", subtitle, actions)
+
+    if _q(query, "created"):
+        body += alert("Corrida ejecutada correctamente.", "ok")
+
+    if needs_attention > 0:
+        body += alert(
+            f"{needs_attention} guia(s) requieren atencion en la ultima corrida. "
+            "Haz clic en 'Ver que requiere atencion' para revisarlas."
+        )
+    else:
+        body += alert("Sin guias que requieran atencion en la ultima corrida.", "ok")
+
+    attention_variant = "danger" if needs_attention > 0 else "ok"
     body += card_grid(
         [
-            ("Ultima corrida", str(latest["id"])),
-            ("Inicio", str(latest["started_at"])),
-            ("Modo", str(latest["mode"])),
-            ("Procesadas", str(latest["total_processed"])),
+            ("Ultima corrida", f"#{latest['id']}", "info"),
+            ("Procesadas", str(latest["total_processed"]), ""),
+            ("Requieren atencion", str(needs_attention), attention_variant),
+            ("Sin cambios", str(unchanged), "ok" if unchanged > 0 else ""),
         ]
     )
 
-    quick = panel(
-        '<form class="filters" method="get" action="/guides/">'
-        '<label>Buscar guia<input type="text" name="guide" placeholder="B263378877-1"></label>'
-        '<button type="submit">Abrir historial</button>'
-        '</form>'
-    )
-    body += quick.replace('action="/guides/"', 'onsubmit="event.preventDefault();window.location=\'/guides/\'+encodeURIComponent(this.guide.value);"')
-
-    body += '<div class="grid-two">'
-    body += panel(h("Resultados de la ultima corrida") + table(["Resultado", "Total"], [[_e(row["resultado"]), str(row["total"])] for row in counts]))
-    body += panel(h("Estados propuestos") + table(["Estado propuesto", "Total"], [[_e(row["estado_propuesto"]), str(row["total"])] for row in statuses]))
-    body += '</div>'
-    body += h("Guias con mas cambios historicos")
-    body += table(
-        ["Guia", "Cambios acumulados"],
-        [[f'<a href="/guides/{_u(row["guia"])}">{_e(row["guia"])}</a>', str(row["total_cambios"])] for row in top_guides],
-    )
+    top_guides = repo.top_guides_with_changes(limit=10)
+    if top_guides:
+        body += h("Guias con mas cambios historicos")
+        body += table(
+            ["Guia", "Cambios acumulados"],
+            [
+                [
+                    f'<a href="/guides/{_u(row["guia"])}">{_e(row["guia"])}</a>',
+                    str(row["total_cambios"]),
+                ]
+                for row in top_guides
+            ],
+        )
     return layout("Centro operativo", body)
 
 
@@ -208,10 +245,10 @@ def _render_runs(repo: DashboardRepository, query: dict[str, list[str]]) -> str:
         ["Run ID", "Inicio", "Fin", "Modo", "Procesadas", "Cambios", "Sin cambios", "Manual", "Errores"],
         [
             [
-                f'<a href="/runs/{row["id"]}">{row["id"]}</a>',
-                _e(row["started_at"]),
-                _e(row["finished_at"] or ""),
-                _e(row["mode"]),
+                f'<a href="/runs/{row["id"]}"><strong>#{row["id"]}</strong></a>',
+                _fmt_ts(str(row["started_at"])),
+                _fmt_ts(str(row["finished_at"])) if row["finished_at"] else '<span class="muted">—</span>',
+                mode_badge(str(row["mode"])),
                 str(row["total_processed"]),
                 str(row["total_changed"]),
                 str(row["total_unchanged"]),
@@ -266,38 +303,55 @@ def _render_run_detail(repo: DashboardRepository, run_id: int, query: dict[str, 
     if result_filter:
         rows = [row for row in rows if str(row["resultado"]) == result_filter]
 
+    duration = repo.run_duration_seconds(run_id)
+    duration_text = _format_duration(duration) if duration else ""
+    subtitle = (
+        f"{_fmt_ts(str(run['started_at']))} · {mode_badge(str(run['mode']))} · "
+        f"{run['total_processed']} guias procesadas"
+        + (f" · {duration_text}" if duration_text else "")
+    )
     body = hero(
-        f"Corrida {run_id}",
-        f"Inicio {run['started_at']} | modo {run['mode']} | procesadas {run['total_processed']}",
+        f"Corrida #{run_id}",
+        "",
         button("/run/new", "Nueva corrida") + button("/runs", "Volver a corridas", "ghost"),
     )
+    # Insert subtitle with raw HTML (mode_badge is HTML)
+    body = body.replace('<p></p>', f'<p class="muted">{subtitle}</p>')
     if _q(query, "created"):
         body += alert("Corrida creada correctamente.", "ok")
     body += panel(
         '<form class="filters" method="get">'
-        '<label>Resultado<select name="resultado"><option value="">Todos</option><option value="changed">changed</option><option value="unchanged">unchanged</option><option value="manual_review">manual_review</option><option value="error">error</option></select></label>'
+        '<label>Resultado'
+        '<select name="resultado">'
+        '<option value="">Todos</option>'
+        '<option value="changed">changed</option>'
+        '<option value="unchanged">unchanged</option>'
+        '<option value="manual_review">manual_review</option>'
+        '<option value="parse_error">parse_error</option>'
+        '<option value="error">error</option>'
+        '</select></label>'
         '<button type="submit">Filtrar</button>'
         f'{button(f"/runs/{run_id}", "Limpiar", "ghost")}'
         '</form>'
     ).replace(f'<option value="{result_filter}">', f'<option value="{result_filter}" selected>')
     body += table(
-        ["Guia", "Cliente", "Resultado", "Notion", "Effi", "Propuesto", "Actualizacion", "Motivo", "Error"],
+        ["Guia", "Cliente", "Resultado", "Accion requerida", "Notion", "Effi", "Propuesto", "Motivo", "Error"],
         [
             [
                 f'<a href="/guides/{_u(row["guia"])}">{_e(row["guia"])}</a>',
                 _e(row["cliente"]),
-                f'<span class="pill">{_e(row["resultado"])}</span>',
+                result_pill(str(row["resultado"])),
+                _e(row["requiere_accion"] or ""),
                 _e(row["estado_notion_actual"] or "N/D"),
                 _e(row["estado_effi_actual"] or "N/D"),
                 _e(row["estado_propuesto"] or "N/D"),
-                _e(row["actualizacion_notion"] or ""),
-                _e(row["motivo"]),
-                _e(row["error"] or ""),
+                _e_trunc(row["motivo"]),
+                _e_trunc(row["error"] or ""),
             ]
             for row in rows
         ],
     )
-    return layout(f"Corrida {run_id}", body)
+    return layout(f"Corrida #{run_id}", body)
 
 
 def _render_guide_detail(repo: DashboardRepository, guide: str) -> str:
@@ -311,30 +365,140 @@ def _render_guide_detail(repo: DashboardRepository, guide: str) -> str:
         body += panel(p(f"No hay historial para la guia {guide}."))
         return layout("Guia no encontrada", body)
     body += card_grid([
-        ("Cliente mas reciente", str(rows[0]["cliente"])),
+        ("Cliente", str(rows[0]["cliente"])),
         ("Ultimo resultado", str(rows[0]["resultado"])),
         ("Ultimo estado propuesto", str(rows[0]["estado_propuesto"] or "N/D")),
-        ("Ultimo modo", str(rows[0]["mode"])),
+        ("Ultima corrida", f"#{rows[0]['run_id']}"),
     ])
     body += table(
-        ["Run ID", "Inicio", "Modo", "Resultado", "Notion", "Effi", "Propuesto", "Actualizacion", "Motivo", "Error"],
+        ["Corrida", "Inicio", "Modo", "Resultado", "Notion", "Effi", "Propuesto", "Motivo", "Error"],
         [
             [
-                f'<a href="/runs/{row["run_id"]}">{row["run_id"]}</a>',
-                _e(row["started_at"]),
-                _e(row["mode"]),
-                f'<span class="pill">{_e(row["resultado"])}</span>',
+                f'<a href="/runs/{row["run_id"]}">#{row["run_id"]}</a>',
+                _fmt_ts(str(row["started_at"])),
+                mode_badge(str(row["mode"])),
+                result_pill(str(row["resultado"])),
                 _e(row["estado_notion_actual"] or "N/D"),
                 _e(row["estado_effi_actual"] or "N/D"),
                 _e(row["estado_propuesto"] or "N/D"),
-                _e(row["actualizacion_notion"] or ""),
-                _e(row["motivo"]),
-                _e(row["error"] or ""),
+                _e_trunc(row["motivo"]),
+                _e_trunc(row["error"] or ""),
             ]
             for row in rows
         ],
     )
-    return layout(f"Historial de {guide}", body)
+    return layout(f"Historial — {guide}", body)
+
+
+def _render_attention(repo: DashboardRepository) -> str:
+    latest = repo.latest_run()
+    actions = button("/run/new", "Nueva corrida") + button("/runs", "Ver corridas", "ghost")
+
+    if latest is None:
+        body = hero("Requiere atencion", "No hay corridas registradas en SQLite.", actions)
+        return layout("Requiere atencion", body)
+
+    run_id = int(latest["id"])
+    rows = repo.get_results_requiring_attention(run_id)
+    duration = repo.run_duration_seconds(run_id)
+    duration_text = _format_duration(duration) if duration else ""
+    subtitle = (
+        f"Corrida #{latest['id']} · {_fmt_ts(str(latest['started_at']))}"
+        + (f" · {duration_text}" if duration_text else "")
+        + f" · {latest['total_processed']} guias procesadas"
+    )
+
+    body = hero("Requiere atencion", subtitle, actions)
+
+    if not rows:
+        body += alert("Sin guias que requieran atencion en la ultima corrida. Todo en orden.", "ok")
+        return layout("Requiere atencion", body)
+
+    _section_labels = {
+        "changed": "Cambios detectados",
+        "manual_review": "Revision manual",
+        "parse_error": "Errores de parsing HTML",
+        "error": "Errores tecnicos",
+    }
+    by_result: dict[str, list] = {}
+    for row in rows:
+        by_result.setdefault(str(row["resultado"]), []).append(row)
+
+    for resultado in ("changed", "manual_review", "parse_error", "error"):
+        group = by_result.get(resultado, [])
+        if not group:
+            continue
+        body += h(f"{_section_labels[resultado]} ({len(group)})")
+        body += table(
+            ["Guia", "Cliente", "Resultado", "Accion requerida", "Estado Effi", "Propuesto", "Motivo"],
+            [
+                [
+                    f'<a href="/guides/{_u(row["guia"])}">{_e(row["guia"])}</a>',
+                    _e(row["cliente"]),
+                    result_pill(str(row["resultado"])),
+                    _e(row["requiere_accion"] or ""),
+                    _e(row["estado_effi_actual"] or "N/D"),
+                    _e(row["estado_propuesto"] or "N/D"),
+                    _e_trunc(row["motivo"]),
+                ]
+                for row in group
+            ],
+        )
+
+    return layout("Requiere atencion", body)
+
+
+def _format_duration(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, secs = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {secs}s"
+    hours, mins = divmod(minutes, 60)
+    return f"{hours}h {mins}m"
+
+
+def _render_run_progress(token: str) -> str:
+    with _jobs_lock:
+        job = dict(_jobs.get(token, {}))
+
+    if not job:
+        body = hero(
+            "Corrida no encontrada",
+            "El token no existe o ya expiro.",
+            button("/runs", "Ver corridas", "ghost"),
+        )
+        return layout("No encontrado", body)
+
+    status = job.get("status", "running")
+
+    if status == "running":
+        # JS auto-refresh every 3 seconds so the page stays inside the app layout.
+        refresh_script = "<script>setTimeout(function(){location.reload()},3000)</script>"
+        body = (
+            hero(
+                "Corrida en progreso",
+                "Se estan consultando las guias en paralelo. Esta pagina se actualiza automaticamente cada 3 segundos.",
+                button("/runs", "Ver corridas en otro momento", "ghost"),
+            )
+            + alert("La corrida esta ejecutandose en segundo plano. Por favor espera.")
+            + refresh_script
+        )
+        return layout("Corrida en progreso", body)
+
+    if status == "done":
+        run_id = job.get("run_id", 0)
+        redirect_script = f'<script>location.href="/runs/{run_id}?created=1"</script>'
+        return layout("Corrida completada", redirect_script)
+
+    # status == "error"
+    error_msg = job.get("error") or "Error desconocido."
+    body = hero(
+        "Error en la corrida",
+        "Ocurrio un error al ejecutar la corrida.",
+        button("/run/new", "Intentar de nuevo") + button("/runs", "Ver corridas", "ghost"),
+    ) + alert(f"Detalle: {_e(error_msg)}")
+    return layout("Error en corrida", body)
 
 
 def _q(query: dict[str, list[str]], key: str) -> str | None:
@@ -346,9 +510,34 @@ def _q(query: dict[str, list[str]], key: str) -> str | None:
 
 def _e(value: object) -> str:
     from html import escape
-
     return escape(str(value))
 
 
 def _u(value: object) -> str:
     return quote(str(value), safe="")
+
+
+def _fmt_ts(ts: str | None) -> str:
+    """Format ISO timestamp to a readable short form: '17 abr 2026, 16:12'."""
+    if not ts:
+        return ""
+    ts = str(ts).replace("T", " ")
+    try:
+        date_part, time_part = ts[:10], ts[11:16]
+        year, month, day = date_part.split("-")
+        months = ["", "ene", "feb", "mar", "abr", "may", "jun",
+                  "jul", "ago", "sep", "oct", "nov", "dic"]
+        return f"{int(day)} {months[int(month)]} {year}, {time_part}"
+    except Exception:  # noqa: BLE001
+        return ts[:16]
+
+
+def _e_trunc(value: object, max_len: int = 90) -> str:
+    """Escape and truncate long text; show full text on hover via title attribute."""
+    from html import escape
+    s = str(value)
+    if not s or s == "None":
+        return ""
+    if len(s) <= max_len:
+        return escape(s)
+    return f'<span class="cell-trunc" title="{escape(s)}">{escape(s[:max_len])}\u2026</span>'

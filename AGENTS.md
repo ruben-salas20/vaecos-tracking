@@ -28,6 +28,10 @@
   - `python v0.2/cli.py compare-runs --run-id 7`
   - `python v0.2/cli.py stats`
   - `python v0.2/cli.py guide-history --guide B263378877-1`
+- Update workflow:
+  - `python v0.2/cli.py check-update`
+  - `python v0.2/cli.py download-update`
+  - `python v0.2/cli.py apply-update`
 - TUI:
   - `python v0.2/cli.py tui`
 
@@ -79,8 +83,22 @@
   - run dry-run first
   - inspect generated `summary.md`
   - then run `--apply` if the proposed changes look correct
+- Effi fetching is parallel (up to 8 concurrent requests via `ThreadPoolExecutor`).
+- If Effi returns HTTP 200 but `estado_actual` cannot be extracted, the result is `parse_error` (not `manual_review`). This signals a likely HTML structure change.
 - Effi parsing is HTML-structure-dependent. If parsing breaks, rerun with raw HTML saving enabled before changing rules:
   - v0.2: `python v0.2/cli.py --dry-run --save-raw-html`
+
+## apply-update behavior
+- Searches `v0.2/updates/` for the newest `.zip` by modification time.
+- Backs up current `vaecos_v02/`, `cli.py`, and `version.json` to `backups/` before replacing anything.
+- Replaces only code (`vaecos_v02/`, `cli.py`, `version.json`).
+- Never touches: `.env`, `v0.2/data/` (SQLite), `v0.2/reports/`.
+- Detects the zip layout by searching for `vaecos_v02/` inside the extracted content.
+
+## v0.3 run execution
+- POST to `/run/new` now starts a background thread immediately and redirects to `/run/progress/<token>`.
+- The progress page auto-refreshes every 3 seconds using JS until the run completes or errors.
+- The server is never blocked during a run.
 
 ## Reporting / storage gotchas
 - `v0.2` reports should write into `v0.2/reports/` by default; SQLite history should live in `v0.2/data/vaecos_tracking.db`.

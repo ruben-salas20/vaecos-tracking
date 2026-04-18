@@ -65,6 +65,7 @@ def _build_markdown_lines(
     manual_review = [
         result for result in results if result.resultado == "manual_review"
     ]
+    parse_errors = [result for result in results if result.resultado == "parse_error"]
     errors = [result for result in results if result.resultado == "error"]
     lines = [
         "# Informe seguimiento VAECOS v0.2",
@@ -88,6 +89,7 @@ def _build_markdown_lines(
         f"| Cambios detectados | {len(changed)} |",
         f"| Sin cambios | {len(unchanged)} |",
         f"| Revision manual | {len(manual_review)} |",
+        f"| Errores de parsing HTML | {len(parse_errors)} |",
         f"| Errores tecnicos | {len(errors)} |",
         "",
     ]
@@ -98,6 +100,7 @@ def _build_markdown_lines(
     _append_section(lines, "Cambios detectados", changed)
     _append_section(lines, "Sin cambios", unchanged)
     _append_section(lines, "Revision manual", manual_review)
+    _append_section(lines, "Errores de parsing HTML", parse_errors)
     _append_section(lines, "Errores tecnicos", errors)
     return lines
 

@@ -15,6 +15,7 @@ from vaecos_v02.app.services.run_tracking import (
     stats_history,
 )
 from vaecos_v02.app.services.update_service import (
+    apply_update,
     check_for_updates,
     download_update,
     version_text,
@@ -34,6 +35,7 @@ def parse_args() -> argparse.Namespace:
         "version",
         "check-update",
         "download-update",
+        "apply-update",
         "tui",
     }
     if not argv or argv[0] not in known_commands:
@@ -121,6 +123,10 @@ def parse_args() -> argparse.Namespace:
     subparsers.add_parser(
         "download-update", help="Descarga la ultima actualizacion disponible"
     )
+    subparsers.add_parser(
+        "apply-update",
+        help="Aplica la actualizacion descargada (preserva .env, SQLite y reportes)",
+    )
 
     subparsers.add_parser("tui", help="Abre una interfaz de terminal interactiva")
 
@@ -174,6 +180,9 @@ def main() -> int:
     if command == "download-update":
         print(download_update(settings))
         return 0
+    if command == "apply-update":
+        print(apply_update(settings, base_dir))
+        return 0
     if command == "tui":
         if not settings.notion_api_key or not settings.notion_data_source_id:
             raise SystemExit(
@@ -222,7 +231,8 @@ def start_tui(settings) -> int:
         print("10. Version de la app")
         print("11. Buscar actualizaciones")
         print("12. Descargar actualizacion")
-        print("13. Salir")
+        print("13. Instalar actualizacion descargada")
+        print("14. Salir")
         print()
 
         choice = input("Selecciona una opcion: ").strip()
@@ -291,6 +301,9 @@ def start_tui(settings) -> int:
             if _confirm("Intentar descargar la ultima actualizacion disponible desde GitHub"):
                 _show_text_and_pause(download_update(settings))
         elif choice == "13":
+            if _confirm("Instalar la actualizacion descargada (se hara un backup automatico del codigo actual)"):
+                _show_text_and_pause(apply_update(settings, Path(__file__).resolve().parents[2]))
+        elif choice == "14":
             return 0
         else:
             _pause("Opcion no valida. Presiona Enter para continuar.")

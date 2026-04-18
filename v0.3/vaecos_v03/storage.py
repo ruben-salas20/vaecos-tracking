@@ -83,6 +83,49 @@ class DashboardRepository:
                 ).fetchall()
             )
 
+    def get_results_requiring_attention(self, run_id: int) -> list[sqlite3.Row]:
+        """Returns all non-unchanged results for a run, ordered by urgency."""
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT guia, cliente, estado_notion_actual, estado_effi_actual,
+                           estado_propuesto, resultado, motivo, requiere_accion,
+                           actualizacion_notion, error
+                    FROM run_results
+                    WHERE run_id = ? AND resultado != 'unchanged'
+                    ORDER BY
+                        CASE resultado
+                            WHEN 'changed'       THEN 1
+                            WHEN 'manual_review' THEN 2
+                            WHEN 'parse_error'   THEN 3
+                            WHEN 'error'         THEN 4
+                            ELSE 5
+                        END,
+                        guia ASC
+                    """,
+                    (run_id,),
+                ).fetchall()
+            )
+
+    def run_duration_seconds(self, run_id: int) -> int | None:
+        """Returns run duration in seconds, or None if not finished yet."""
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT CAST(
+                    (julianday(finished_at) - julianday(started_at)) * 86400
+                    AS INTEGER
+                ) AS duration
+                FROM runs
+                WHERE id = ? AND finished_at IS NOT NULL
+                """,
+                (run_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return int(row["duration"]) if row["duration"] is not None else None
+
     def guide_history(self, guide: str, limit: int = 20) -> list[sqlite3.Row]:
         with self._connect() as connection:
             return list(

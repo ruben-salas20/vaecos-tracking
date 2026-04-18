@@ -37,7 +37,7 @@ class RunRepository:
                 sum(1 for result in results if result.resultado == "changed"),
                 sum(1 for result in results if result.resultado == "unchanged"),
                 sum(1 for result in results if result.resultado == "manual_review"),
-                sum(1 for result in results if result.resultado == "error"),
+                sum(1 for result in results if result.resultado in {"error", "parse_error"}),
                 run_id,
             ),
         )
