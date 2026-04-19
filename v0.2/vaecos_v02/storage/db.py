@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS run_results (
     run_id INTEGER NOT NULL,
     guia TEXT NOT NULL,
     cliente TEXT NOT NULL,
+    carrier TEXT NOT NULL DEFAULT 'effi',
     estado_notion_actual TEXT,
     estado_effi_actual TEXT,
     estado_propuesto TEXT,
@@ -68,6 +69,45 @@ CREATE TABLE IF NOT EXISTS tracking_novelty_events (
     details TEXT,
     FOREIGN KEY(run_id) REFERENCES runs(id)
 );
+
+CREATE TABLE IF NOT EXISTS rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    carrier TEXT NOT NULL DEFAULT 'effi',
+    name TEXT NOT NULL,
+    priority INTEGER NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    estado_match_kind TEXT NOT NULL DEFAULT 'any'
+        CHECK (estado_match_kind IN ('any', 'equals_one_of', 'contains_any_of')),
+    estado_match_values TEXT NOT NULL DEFAULT '[]',
+    novelty_match_kind TEXT NOT NULL DEFAULT 'any'
+        CHECK (novelty_match_kind IN ('any', 'contains_any_of')),
+    novelty_match_values TEXT NOT NULL DEFAULT '[]',
+    days_comparator TEXT
+        CHECK (days_comparator IS NULL OR days_comparator IN ('gt', 'gte', 'lt', 'lte', 'no_date')),
+    days_threshold INTEGER,
+    estado_propuesto TEXT,
+    motivo_template TEXT NOT NULL,
+    requiere_accion TEXT NOT NULL DEFAULT '',
+    review_needed INTEGER NOT NULL DEFAULT 0,
+    notes TEXT,
+    updated_at TEXT NOT NULL,
+    updated_by TEXT NOT NULL DEFAULT 'operadora'
+);
+
+CREATE TABLE IF NOT EXISTS rule_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_id INTEGER,
+    action TEXT NOT NULL
+        CHECK (action IN ('create', 'update', 'delete', 'enable', 'disable', 'seed')),
+    before_json TEXT,
+    after_json TEXT,
+    changed_at TEXT NOT NULL,
+    changed_by TEXT NOT NULL DEFAULT 'operadora',
+    note TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_rules_priority ON rules(priority);
+CREATE INDEX IF NOT EXISTS idx_rule_history_rule_id ON rule_history(rule_id);
 """
 
 
@@ -123,7 +163,23 @@ def connect(db_path: Path) -> sqlite3.Connection:
 
 def init_db(connection: sqlite3.Connection) -> None:
     connection.executescript(SCHEMA)
+    _apply_migrations(connection)
     connection.commit()
+
+
+def _apply_migrations(connection: sqlite3.Connection) -> None:
+    """Idempotent ALTERs for schemas created before new columns existed."""
+    if not _column_exists(connection, "run_results", "carrier"):
+        connection.execute(
+            "ALTER TABLE run_results ADD COLUMN carrier TEXT NOT NULL DEFAULT 'effi'"
+        )
+
+
+def _column_exists(
+    connection: sqlite3.Connection, table: str, column: str
+) -> bool:
+    rows = connection.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(row["name"] == column for row in rows)
 
 
 def clear_history(connection: sqlite3.Connection) -> None:
@@ -131,4 +187,11 @@ def clear_history(connection: sqlite3.Connection) -> None:
     connection.execute("DELETE FROM tracking_status_events")
     connection.execute("DELETE FROM run_results")
     connection.execute("DELETE FROM runs")
+    connection.commit()
+
+
+def reset_rules(connection: sqlite3.Connection) -> None:
+    """Wipes rules and rule_history. Intended for tests and full resets."""
+    connection.execute("DELETE FROM rule_history")
+    connection.execute("DELETE FROM rules")
     connection.commit()

@@ -16,15 +16,53 @@ if str(V02_ROOT) not in sys.path:
 
 from vaecos_v02.app.config import load_settings as load_v02_settings
 from vaecos_v02.app.services.run_tracking import execute_tracking
-from vaecos_v02.storage.db import connect as db_connect, init_db, seed_default_rules
-from vaecos_v02.storage.repositories import RulesRepository
+from vaecos_v02.core.rules import DEFAULT_RULES
+from vaecos_v02.storage.db import connect as v02_connect, init_db as v02_init_db
+from vaecos_v02.storage.rules_repository import RulesRepository
 from vaecos_v03.config import Settings, load_settings
-from vaecos_v03.render import alert, button, card_grid, hero, h, layout, mode_badge, panel, p, result_pill, rule_enabled_pill, table
+from vaecos_v03.render import (
+    alert,
+    button,
+    card_grid,
+    carrier_badge,
+    h,
+    hero,
+    layout,
+    line_chart,
+    mode_badge,
+    p,
+    panel,
+    result_pill,
+    stacked_bar_chart,
+    table,
+)
+from vaecos_v03.rules_ui import (
+    handle_create as _rules_handle_create,
+    handle_delete as _rules_handle_delete,
+    handle_toggle as _rules_handle_toggle,
+    handle_update as _rules_handle_update,
+    render_rule_form as _render_rule_form,
+    render_rule_history as _render_rule_history,
+    render_rule_preview as _render_rule_preview,
+    render_rules_list as _render_rules_list,
+)
 from vaecos_v03.storage import DashboardRepository
 
 # In-memory store for background run jobs: token -> {status, run_id, error}
 _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
+
+_STATIC_DIR = (Path(__file__).resolve().parent / "static").resolve()
+_STATIC_MIME = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".woff2": "font/woff2",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,8 +82,15 @@ def main() -> int:
         host=args.host or settings.host,
         port=args.port or settings.port,
     )
+    if settings.sqlite_db_path.exists():
+        _migration_conn = v02_connect(settings.sqlite_db_path)
+        try:
+            v02_init_db(_migration_conn)
+            RulesRepository(_migration_conn).seed_if_empty(DEFAULT_RULES)
+        finally:
+            _migration_conn.close()
+
     repo = DashboardRepository(settings.sqlite_db_path)
-    _bootstrap_db(settings.sqlite_db_path)
 
     latest = repo.latest_run()
     if args.check:
@@ -67,19 +112,6 @@ def main() -> int:
     return 0
 
 
-def _bootstrap_db(db_path) -> None:
-    conn = db_connect(db_path)
-    init_db(conn)
-    seed_default_rules(conn)
-    conn.close()
-
-
-def _rules_repo(db_path):
-    conn = db_connect(db_path)
-    init_db(conn)
-    return conn, RulesRepository(conn)
-
-
 def _make_handler(repo: DashboardRepository):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
@@ -87,10 +119,19 @@ def _make_handler(repo: DashboardRepository):
             path = parsed.path.rstrip("/") or "/"
             query = parse_qs(parsed.query)
             try:
+                if path.startswith("/static/"):
+                    return self._serve_static(path[len("/static/"):])
+                if path == "/favicon.ico":
+                    return self._serve_static("logo.png")
                 if path == "/":
                     return self._send_html(_render_home(repo, query))
                 if path == "/attention":
                     return self._send_html(_render_attention(repo))
+                if path == "/analytics":
+                    return self._send_html(_render_analytics(repo, query))
+                if path.startswith("/clients/"):
+                    cliente = unquote(path.split("/", 2)[-1])
+                    return self._send_html(_render_client_detail(repo, cliente, query))
                 if path == "/runs":
                     return self._send_html(_render_runs(repo, query))
                 if path == "/run/new":
@@ -105,12 +146,19 @@ def _make_handler(repo: DashboardRepository):
                     guide = unquote(path.split("/")[-1])
                     return self._send_html(_render_guide_detail(repo, guide))
                 if path == "/rules":
-                    return self._send_html(_render_rules_list(repo.db_path, query))
+                    flash = _rules_flash_message(query)
+                    return self._send_html(_render_rules_list(repo.db_path, flash))
                 if path == "/rules/new":
-                    return self._send_html(_render_rule_form(repo.db_path, None, query))
+                    return self._send_html(_render_rule_form(repo.db_path, None))
+                if path == "/rules/preview":
+                    guia = (_q(query, "guia") or "").strip() or None
+                    return self._send_html(_render_rule_preview(repo.db_path, guia))
                 if path.startswith("/rules/") and path.endswith("/edit"):
                     rule_id = int(path.split("/")[2])
-                    return self._send_html(_render_rule_form(repo.db_path, rule_id, query))
+                    return self._send_html(_render_rule_form(repo.db_path, rule_id))
+                if path.startswith("/rules/") and path.endswith("/history"):
+                    rule_id = int(path.split("/")[2])
+                    return self._send_html(_render_rule_history(repo.db_path, rule_id))
             except ValueError:
                 return self._send_text("Ruta invalida", HTTPStatus.BAD_REQUEST)
             except Exception as exc:  # noqa: BLE001
@@ -124,16 +172,16 @@ def _make_handler(repo: DashboardRepository):
                 if path == "/run/new":
                     return self._handle_run_submit()
                 if path == "/rules/new":
-                    return self._handle_rule_create(repo.db_path)
+                    return self._handle_rule_create()
                 if path.startswith("/rules/") and path.endswith("/edit"):
                     rule_id = int(path.split("/")[2])
-                    return self._handle_rule_update(repo.db_path, rule_id)
+                    return self._handle_rule_update(rule_id)
                 if path.startswith("/rules/") and path.endswith("/toggle"):
                     rule_id = int(path.split("/")[2])
-                    return self._handle_rule_toggle(repo.db_path, rule_id)
+                    return self._redirect(_rules_handle_toggle(repo.db_path, rule_id))
                 if path.startswith("/rules/") and path.endswith("/delete"):
                     rule_id = int(path.split("/")[2])
-                    return self._handle_rule_delete(repo.db_path, rule_id)
+                    return self._redirect(_rules_handle_delete(repo.db_path, rule_id))
             except Exception as exc:  # noqa: BLE001
                 return self._send_text(f"Error interno: {exc}", HTTPStatus.INTERNAL_SERVER_ERROR)
             return self._send_text("No encontrado", HTTPStatus.NOT_FOUND)
@@ -179,52 +227,46 @@ def _make_handler(repo: DashboardRepository):
             self.send_header("Location", f"/run/progress/{token}")
             self.end_headers()
 
+        def _handle_rule_create(self) -> None:
+            form = self._read_form()
+            location, _, errors = _rules_handle_create(repo.db_path, form)
+            if errors:
+                return self._send_html(_render_rule_form(repo.db_path, None, form, errors))
+            return self._redirect(location)
+
+        def _handle_rule_update(self, rule_id: int) -> None:
+            form = self._read_form()
+            location, _, errors = _rules_handle_update(repo.db_path, rule_id, form)
+            if errors:
+                return self._send_html(_render_rule_form(repo.db_path, rule_id, form, errors))
+            return self._redirect(location)
+
         def _read_form(self) -> dict:
             length = int(self.headers.get("Content-Length", "0"))
             payload = self.rfile.read(length).decode("utf-8") if length else ""
-            return parse_qs(payload)
-
-        def _form_val(self, form: dict, key: str, default: str = "") -> str:
-            return (form.get(key, [default]) or [default])[0]
-
-        def _handle_rule_create(self, db_path) -> None:
-            form = self._read_form()
-            conn, rules_repo = _rules_repo(db_path)
-            try:
-                rules_repo.create(_form_to_rule_data(form))
-            finally:
-                conn.close()
-            self._redirect("/rules?saved=1")
-
-        def _handle_rule_update(self, db_path, rule_id: int) -> None:
-            form = self._read_form()
-            conn, rules_repo = _rules_repo(db_path)
-            try:
-                rules_repo.update(rule_id, _form_to_rule_data(form))
-            finally:
-                conn.close()
-            self._redirect("/rules?saved=1")
-
-        def _handle_rule_toggle(self, db_path, rule_id: int) -> None:
-            conn, rules_repo = _rules_repo(db_path)
-            try:
-                rules_repo.toggle(rule_id)
-            finally:
-                conn.close()
-            self._redirect("/rules")
-
-        def _handle_rule_delete(self, db_path, rule_id: int) -> None:
-            conn, rules_repo = _rules_repo(db_path)
-            try:
-                rules_repo.delete(rule_id)
-            finally:
-                conn.close()
-            self._redirect("/rules?deleted=1")
+            return parse_qs(payload, keep_blank_values=True)
 
         def _redirect(self, location: str) -> None:
             self.send_response(HTTPStatus.SEE_OTHER)
             self.send_header("Location", location)
             self.end_headers()
+
+        def _serve_static(self, rel: str) -> None:
+            try:
+                target = (_STATIC_DIR / rel).resolve()
+                target.relative_to(_STATIC_DIR)
+            except (ValueError, OSError):
+                return self._send_text("No encontrado", HTTPStatus.NOT_FOUND)
+            if not target.is_file():
+                return self._send_text("No encontrado", HTTPStatus.NOT_FOUND)
+            mime = _STATIC_MIME.get(target.suffix.lower(), "application/octet-stream")
+            data = target.read_bytes()
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.end_headers()
+            self.wfile.write(data)
 
         def _send_html(self, html: str) -> None:
             encoded = html.encode("utf-8")
@@ -243,152 +285,6 @@ def _make_handler(repo: DashboardRepository):
             self.wfile.write(encoded)
 
     return Handler
-
-
-def _form_to_rule_data(form: dict) -> dict:
-    fv = lambda k, d="": (form.get(k, [d]) or [d])[0]  # noqa: E731
-    return {
-        "priority": fv("priority", "100"),
-        "enabled": bool(fv("enabled")),
-        "name": fv("name"),
-        "match_estado": fv("match_estado"),
-        "match_estado_contains": fv("match_estado_contains"),
-        "match_novelty_contains": fv("match_novelty_contains"),
-        "min_days": fv("min_days"),
-        "estado_propuesto": fv("estado_propuesto"),
-        "motivo": fv("motivo"),
-        "requiere_accion": fv("requiere_accion"),
-        "review_needed": bool(fv("review_needed")),
-        "updated_by": "operadora",
-    }
-
-
-def _render_rules_list(db_path, query: dict[str, list[str]]) -> str:
-    conn, rules_repo = _rules_repo(db_path)
-    try:
-        rules = rules_repo.list_all()
-    finally:
-        conn.close()
-
-    body = hero(
-        "Reglas de decision",
-        "Determinan como se interpreta el estado de Effi para cada guia. Se evaluan en orden de prioridad.",
-        button("/rules/new", "Nueva regla") + button("/", "Volver al resumen", "ghost"),
-    )
-    body += alert(
-        "Las reglas se evaluan en orden de prioridad ascendente. La primera que coincide determina el resultado.",
-        "info",
-    )
-    if _q(query, "saved"):
-        body += alert("Regla guardada correctamente.", "ok")
-    if _q(query, "deleted"):
-        body += alert("Regla eliminada.", "ok")
-
-    body += table(
-        ["Prio", "Estado", "Nombre", "Estado Effi (exacto)", "Estado Effi (contiene)", "Novedad (contiene)", "Dias min.", "Estado propuesto", "Acciones"],
-        [
-            [
-                str(rule["priority"]),
-                rule_enabled_pill(bool(rule["enabled"])),
-                _e(rule["name"]),
-                _e(rule["match_estado"] or ""),
-                _e(rule["match_estado_contains"] or ""),
-                _e(rule["match_novelty_contains"] or ""),
-                str(rule["min_days"]) if rule["min_days"] is not None else "",
-                _e(rule["estado_propuesto"] or "(revision manual)"),
-                (
-                    f'<a class="button ghost" style="padding:4px 10px;font-size:.78rem" href="/rules/{rule["id"]}/edit">Editar</a>'
-                    f'<form method="post" action="/rules/{rule["id"]}/toggle" style="display:inline">'
-                    f'<button style="padding:4px 10px;font-size:.78rem;background:{"#16a34a" if not rule["enabled"] else "#64748b"}">'
-                    f'{"Activar" if not rule["enabled"] else "Desactivar"}</button></form>'
-                    f'<form method="post" action="/rules/{rule["id"]}/delete" style="display:inline" '
-                    f'onsubmit="return confirm(\'Eliminar esta regla?\');">'
-                    f'<button style="padding:4px 10px;font-size:.78rem;background:#dc2626">Eliminar</button></form>'
-                ),
-            ]
-            for rule in rules
-        ],
-    )
-    return layout("Reglas de decision", body)
-
-
-def _render_rule_form(db_path, rule_id: int | None, query: dict[str, list[str]]) -> str:
-    conn, rules_repo = _rules_repo(db_path)
-    try:
-        rule = rules_repo.get(rule_id) if rule_id is not None else None
-    finally:
-        conn.close()
-
-    is_edit = rule is not None
-    title = f"Editar regla #{rule_id}" if is_edit else "Nueva regla"
-
-    def val(field: str, default: str = "") -> str:
-        if rule and rule.get(field) is not None:
-            return _e(str(rule[field]))
-        return _e(default)
-
-    checked_enabled = 'checked' if (rule is None or rule.get("enabled", 1)) else ''
-    checked_review = 'checked' if rule and rule.get("review_needed") else ''
-
-    action = f"/rules/{rule_id}/edit" if is_edit else "/rules/new"
-    body = hero(
-        title,
-        "Configura las condiciones y la accion de esta regla. Los campos de coincidencia usan texto normalizado (minusculas).",
-        button("/rules", "Volver a reglas", "ghost"),
-    )
-    body += alert(
-        "Tip: usa solo los campos de coincidencia que necesites. Los campos vacios se ignoran. "
-        "El campo 'Dias min.' activa la regla solo si el estado lleva al menos esos dias sin cambio.",
-        "info",
-    )
-    body += panel(f"""
-        <form class="stack" method="post" action="{action}">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-            <label>Prioridad (menor = primero)
-              <input type="number" name="priority" value="{val('priority', '100')}" min="1" max="9999" required>
-            </label>
-            <label>Nombre descriptivo
-              <input type="text" name="name" value="{val('name')}" required>
-            </label>
-          </div>
-          <label style="flex-direction:row;align-items:center;gap:10px;font-weight:600">
-            <input type="checkbox" name="enabled" value="1" {checked_enabled}> Habilitada
-          </label>
-          <div class="sep"></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
-            <label>Estado Effi exacto
-              <input type="text" name="match_estado" value="{val('match_estado')}" placeholder="ej: entregado">
-            </label>
-            <label>Estado Effi contiene
-              <input type="text" name="match_estado_contains" value="{val('match_estado_contains')}" placeholder="ej: devoluci">
-            </label>
-            <label>Novedad contiene
-              <input type="text" name="match_novelty_contains" value="{val('match_novelty_contains')}" placeholder="ej: nadie en casa">
-            </label>
-          </div>
-          <label style="max-width:200px">Dias minimos sin cambio
-            <input type="number" name="min_days" value="{val('min_days')}" min="1" placeholder="dejar vacio para ignorar">
-          </label>
-          <div class="sep"></div>
-          <label>Estado propuesto en Notion (dejar vacio = revision manual)
-            <input type="text" name="estado_propuesto" value="{val('estado_propuesto')}" placeholder="ej: ENTREGADA">
-          </label>
-          <label>Motivo (usa {{days}} para insertar los dias calculados)
-            <input type="text" name="motivo" value="{val('motivo')}" required placeholder="ej: Effi reporta entrega exitosa.">
-          </label>
-          <label>Accion requerida
-            <input type="text" name="requiere_accion" value="{val('requiere_accion')}" required placeholder="ej: Sin accion">
-          </label>
-          <label style="flex-direction:row;align-items:center;gap:10px;font-weight:600">
-            <input type="checkbox" name="review_needed" value="1" {checked_review}> Marcar como revision manual
-          </label>
-          <div class="toolbar">
-            <button type="submit">Guardar regla</button>
-            <a class="button ghost" href="/rules">Cancelar</a>
-          </div>
-        </form>
-    """)
-    return layout(title, body)
 
 
 def _render_home(repo: DashboardRepository, query: dict[str, list[str]]) -> str:
@@ -562,11 +458,12 @@ def _render_run_detail(repo: DashboardRepository, run_id: int, query: dict[str, 
         '</form>'
     ).replace(f'<option value="{result_filter}">', f'<option value="{result_filter}" selected>')
     body += table(
-        ["Guia", "Cliente", "Resultado", "Accion requerida", "Notion", "Effi", "Propuesto", "Motivo", "Error"],
+        ["Guia", "Cliente", "Transportista", "Resultado", "Accion requerida", "Notion", "Effi", "Propuesto", "Motivo", "Error"],
         [
             [
                 f'<a href="/guides/{_u(row["guia"])}">{_e(row["guia"])}</a>',
                 _e(row["cliente"]),
+                carrier_badge(_row_get(row, "carrier")),
                 result_pill(str(row["resultado"])),
                 _e(row["requiere_accion"] or ""),
                 _e(row["estado_notion_actual"] or "N/D"),
@@ -598,12 +495,13 @@ def _render_guide_detail(repo: DashboardRepository, guide: str) -> str:
         ("Ultima corrida", f"#{rows[0]['run_id']}"),
     ])
     body += table(
-        ["Corrida", "Inicio", "Modo", "Resultado", "Notion", "Effi", "Propuesto", "Motivo", "Error"],
+        ["Corrida", "Inicio", "Modo", "Transportista", "Resultado", "Notion", "Effi", "Propuesto", "Motivo", "Error"],
         [
             [
                 f'<a href="/runs/{row["run_id"]}">#{row["run_id"]}</a>',
                 _fmt_ts(str(row["started_at"])),
                 mode_badge(str(row["mode"])),
+                carrier_badge(_row_get(row, "carrier")),
                 result_pill(str(row["resultado"])),
                 _e(row["estado_notion_actual"] or "N/D"),
                 _e(row["estado_effi_actual"] or "N/D"),
@@ -657,11 +555,12 @@ def _render_attention(repo: DashboardRepository) -> str:
             continue
         body += h(f"{_section_labels[resultado]} ({len(group)})")
         body += table(
-            ["Guia", "Cliente", "Resultado", "Accion requerida", "Estado Effi", "Propuesto", "Motivo"],
+            ["Guia", "Cliente", "Transportista", "Resultado", "Accion requerida", "Estado Effi", "Propuesto", "Motivo"],
             [
                 [
                     f'<a href="/guides/{_u(row["guia"])}">{_e(row["guia"])}</a>',
                     _e(row["cliente"]),
+                    carrier_badge(_row_get(row, "carrier")),
                     result_pill(str(row["resultado"])),
                     _e(row["requiere_accion"] or ""),
                     _e(row["estado_effi_actual"] or "N/D"),
@@ -673,6 +572,227 @@ def _render_attention(repo: DashboardRepository) -> str:
         )
 
     return layout("Requiere atencion", body)
+
+
+def _render_analytics(repo: DashboardRepository, query: dict[str, list[str]]) -> str:
+    try:
+        days = max(7, min(int(_q(query, "days") or "30"), 180))
+    except ValueError:
+        days = 30
+
+    actions = (
+        button(f"/analytics?days=7", "7 dias", "ghost" if days != 7 else "")
+        + button(f"/analytics?days=30", "30 dias", "ghost" if days != 30 else "")
+        + button(f"/analytics?days=90", "90 dias", "ghost" if days != 90 else "")
+    )
+    body = hero(
+        "Analytics",
+        f"Insights operativos sobre las ultimas {days} corridas de seguimiento.",
+        actions,
+    )
+
+    kpi = repo.kpi_summary(days=days)
+    if kpi is None or (kpi["total_rows"] or 0) == 0:
+        body += alert(
+            f"Sin datos en los ultimos {days} dias. Corre al menos una ejecucion para ver analytics.",
+            "info",
+        )
+        return layout("Analytics", body)
+
+    total_rows = int(kpi["total_rows"] or 0)
+    parse_err = int(kpi["parse_error"] or 0)
+    err = int(kpi["error"] or 0)
+    parse_err_rate = (parse_err / total_rows * 100) if total_rows else 0.0
+    err_rate = (err / total_rows * 100) if total_rows else 0.0
+
+    body += card_grid(
+        [
+            ("Corridas", str(int(kpi["total_runs"] or 0)), "info"),
+            ("Guias unicas", str(int(kpi["unique_guides"] or 0)), ""),
+            ("Cambios detectados", str(int(kpi["changed"] or 0)), "info"),
+            (
+                "Parse error rate",
+                f"{parse_err_rate:.1f}%",
+                "warn" if parse_err_rate > 5 else "ok",
+            ),
+            (
+                "Error rate",
+                f"{err_rate:.1f}%",
+                "danger" if err_rate > 2 else "ok",
+            ),
+            (
+                "Revision manual",
+                str(int(kpi["manual_review"] or 0)),
+                "warn" if int(kpi["manual_review"] or 0) > 0 else "",
+            ),
+        ]
+    )
+
+    body += h("Tendencia de atencion")
+    trend_rows = repo.attention_trend(days=days)
+    trend_points = [(str(row["day"]), int(row["total"])) for row in trend_rows]
+    body += line_chart(
+        f"Guias que requirieron atencion por dia ({days} dias)",
+        trend_points,
+        color="#dc2626",
+    )
+
+    body += h("Salud de las corridas")
+    summary_rows = repo.runs_summary_by_day(days=days)
+    days_axis = [str(row["day"]) for row in summary_rows]
+    series = [
+        ("Sin cambios", [int(r["unchanged"] or 0) for r in summary_rows], "#cbd5e1"),
+        ("Cambios", [int(r["changed"] or 0) for r in summary_rows], "#3b82f6"),
+        ("Revision manual", [int(r["manual_review"] or 0) for r in summary_rows], "#f59e0b"),
+        ("Parse error", [int(r["parse_error"] or 0) for r in summary_rows], "#fb923c"),
+        ("Error", [int(r["error"] or 0) for r in summary_rows], "#dc2626"),
+    ]
+    body += stacked_bar_chart(
+        f"Resultados por dia ({days} dias)",
+        days_axis,
+        series,
+    )
+
+    body += h("Distribucion por transportista")
+    carriers = repo.carrier_breakdown(days=days)
+    if carriers:
+        body += table(
+            ["Transportista", "Guias unicas", "Filas", "Sin cambios", "Cambios", "Manual", "Parse error", "Error"],
+            [
+                [
+                    carrier_badge(str(row["carrier"])),
+                    str(int(row["unique_guides"] or 0)),
+                    str(int(row["total_rows"] or 0)),
+                    str(int(row["unchanged"] or 0)),
+                    str(int(row["changed"] or 0)),
+                    str(int(row["manual_review"] or 0)),
+                    str(int(row["parse_error"] or 0)),
+                    str(int(row["error"] or 0)),
+                ]
+                for row in carriers
+            ],
+        )
+    else:
+        body += panel(p(f"Sin datos por transportista en los ultimos {days} dias.", muted=True))
+
+    body += h("Clientes con mas issues")
+    clients = repo.top_problem_clients(days=days, limit=10)
+    if clients:
+        body += table(
+            ["Cliente", "Guias unicas", "Total issues", "Cambios", "Manual", "Parse error", "Error"],
+            [
+                [
+                    f'<a href="/clients/{_u(row["cliente"])}">{_e(row["cliente"])}</a>',
+                    str(int(row["unique_guides"] or 0)),
+                    f'<strong>{int(row["total_issues"] or 0)}</strong>',
+                    str(int(row["changed"] or 0)),
+                    str(int(row["manual_review"] or 0)),
+                    str(int(row["parse_error"] or 0)),
+                    str(int(row["error"] or 0)),
+                ]
+                for row in clients
+            ],
+        )
+    else:
+        body += panel(p(f"Sin clientes con issues en los ultimos {days} dias.", muted=True))
+
+    body += h("Tiempo promedio por estado Effi")
+    status_rows = repo.avg_time_in_status(days=max(days, 60))
+    if status_rows:
+        body += panel(
+            p(
+                "Aproximacion: promedio de corridas consecutivas que una guia permanece en cada estado dentro de la ventana. "
+                "Numeros altos indican estados donde las guias se estancan.",
+                muted=True,
+            )
+        )
+        body += table(
+            ["Estado Effi", "Promedio de corridas", "Max", "Guias afectadas"],
+            [
+                [
+                    _e(row["status"] or "(sin estado)"),
+                    f'{float(row["avg_runs"] or 0):.2f}',
+                    str(int(row["max_runs"] or 0)),
+                    str(int(row["guides_affected"] or 0)),
+                ]
+                for row in status_rows
+            ],
+        )
+    else:
+        body += panel(p("Sin datos de estado Effi en la ventana.", muted=True))
+
+    return layout("Analytics", body)
+
+
+def _render_client_detail(
+    repo: DashboardRepository, cliente: str, query: dict[str, list[str]]
+) -> str:
+    try:
+        days = max(7, min(int(_q(query, "days") or "90"), 365))
+    except ValueError:
+        days = 90
+
+    actions = (
+        button("/analytics", "Volver a analytics", "ghost")
+        + button("/runs", "Ver corridas", "ghost")
+    )
+    body = hero(
+        cliente,
+        f"Historial agregado del cliente en los ultimos {days} dias.",
+        actions,
+    )
+
+    summary = repo.client_summary(cliente, days=days)
+    rows = repo.client_history(cliente, days=days)
+
+    if summary is None or (summary["total_rows"] or 0) == 0:
+        body += alert(f"Sin registros para {cliente} en los ultimos {days} dias.", "info")
+        return layout(f"Cliente — {cliente}", body)
+
+    body += card_grid(
+        [
+            ("Guias unicas", str(int(summary["unique_guides"] or 0)), "info"),
+            ("Filas totales", str(int(summary["total_rows"] or 0)), ""),
+            ("Cambios", str(int(summary["changed"] or 0)), "info"),
+            (
+                "Manual",
+                str(int(summary["manual_review"] or 0)),
+                "warn" if int(summary["manual_review"] or 0) > 0 else "",
+            ),
+            (
+                "Parse error",
+                str(int(summary["parse_error"] or 0)),
+                "warn" if int(summary["parse_error"] or 0) > 0 else "",
+            ),
+            (
+                "Error",
+                str(int(summary["error"] or 0)),
+                "danger" if int(summary["error"] or 0) > 0 else "ok",
+            ),
+        ]
+    )
+
+    body += h("Historial de resultados")
+    body += table(
+        ["Corrida", "Inicio", "Modo", "Transportista", "Guia", "Resultado", "Accion", "Notion", "Effi", "Propuesto", "Motivo"],
+        [
+            [
+                f'<a href="/runs/{row["run_id"]}">#{row["run_id"]}</a>',
+                _fmt_ts(str(row["started_at"])),
+                mode_badge(str(row["mode"])),
+                carrier_badge(_row_get(row, "carrier")),
+                f'<a href="/guides/{_u(row["guia"])}">{_e(row["guia"])}</a>',
+                result_pill(str(row["resultado"])),
+                _e(row["requiere_accion"] or ""),
+                _e(row["estado_notion_actual"] or "N/D"),
+                _e(row["estado_effi_actual"] or "N/D"),
+                _e(row["estado_propuesto"] or "N/D"),
+                _e_trunc(row["motivo"]),
+            ]
+            for row in rows
+        ],
+    )
+    return layout(f"Cliente — {cliente}", body)
 
 
 def _format_duration(seconds: int) -> str:
@@ -733,6 +853,31 @@ def _q(query: dict[str, list[str]], key: str) -> str | None:
     if not values:
         return None
     return values[0]
+
+
+def _rules_flash_message(query: dict[str, list[str]]) -> str | None:
+    created = _q(query, "created")
+    if created:
+        return f"Regla '{created}' creada correctamente."
+    updated = _q(query, "updated")
+    if updated:
+        return f"Regla '{updated}' actualizada correctamente."
+    if _q(query, "toggled"):
+        return "Estado de la regla actualizado."
+    if _q(query, "deleted"):
+        return "Regla eliminada."
+    return None
+
+
+def _row_get(row, key: str, default=None):
+    """Safe accessor: returns default if the column is missing from this sqlite3.Row."""
+    try:
+        keys = row.keys()
+    except Exception:  # noqa: BLE001
+        return default
+    if key in keys:
+        return row[key]
+    return default
 
 
 def _e(value: object) -> str:

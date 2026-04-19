@@ -39,17 +39,20 @@
 - `v0.2/cli.py`: thin wrapper.
 - `v0.2/vaecos_v02/app/cli.py`: command parsing, TUI, command dispatch.
 - `v0.2/vaecos_v02/app/services/run_tracking.py`: main execution flow plus SQLite-backed history/analytics helpers.
-- `v0.2/vaecos_v02/core/rules.py`: business rules; change this carefully.
-- `v0.2/vaecos_v02/providers/notion_provider.py`: Notion read/write integration.
-- `v0.2/vaecos_v02/providers/effi_provider.py`: Effi fetch + HTML parsing.
-- `v0.2/vaecos_v02/storage/db.py` and `storage/repositories.py`: SQLite schema and queries.
+- `v0.2/vaecos_v02/app/services/update_service.py`: GitHub release check/download/apply flow.
+- `v0.2/vaecos_v02/core/rules.py`: data-driven rules engine plus `DEFAULT_RULES` seed.
+- `v0.2/vaecos_v02/providers/carrier.py`: carrier protocol and shared config.
+- `v0.2/vaecos_v02/providers/carriers/`: carrier registry and implementations. `effi` is real, `guatex` is still a stub.
+- `v0.2/vaecos_v02/providers/notion_provider.py`: Notion read/write integration, including `Transportista` mapping.
+- `v0.2/vaecos_v02/storage/db.py`, `storage/repositories.py`, and `storage/rules_repository.py`: SQLite schema, run queries, rules CRUD, and audit trail.
 
 ## `v0.3` layout
 - `v0.3/server.py`: dashboard entrypoint.
-- `v0.3/vaecos_v03/app.py`: local HTTP server and route wiring.
-- `v0.3/vaecos_v03/storage.py`: read-only SQLite queries for dashboard views.
-- `v0.3/vaecos_v03/render.py`: HTML rendering helpers.
-- `v0.3` reads `v0.2` SQLite; it does not write tracking data.
+- `v0.3/vaecos_v03/app.py`: local HTTP server, background run execution, progress pages, analytics, and rules routes.
+- `v0.3/vaecos_v03/storage.py`: dashboard and analytics SQLite queries.
+- `v0.3/vaecos_v03/render.py`: HTML rendering helpers, charts, branding, and badges.
+- `v0.3/vaecos_v03/rules_ui.py`: forms, preview, history, and POST handlers for editable rules.
+- `v0.3` reads `v0.2` SQLite and can trigger runs through `v0.2` services.
 
 ## Environment variables that matter
 - Shared:
@@ -90,10 +93,10 @@
 
 ## apply-update behavior
 - Searches `v0.2/updates/` for the newest `.zip` by modification time.
-- Backs up current `vaecos_v02/`, `cli.py`, and `version.json` to `backups/` before replacing anything.
-- Replaces only code (`vaecos_v02/`, `cli.py`, `version.json`).
+- Backs up current `v0.2` code and the active web layer before replacing anything.
+- Replaces `v0.2` code, `v0.3/`, and root helper files when present in the zip.
 - Never touches: `.env`, `v0.2/data/` (SQLite), `v0.2/reports/`.
-- Detects the zip layout by searching for `vaecos_v02/` inside the extracted content.
+- Detects the zip layout by searching for `vaecos_v02/` inside the extracted content and then updates sibling app files from the same package root.
 
 ## v0.3 run execution
 - POST to `/run/new` now starts a background thread immediately and redirects to `/run/progress/<token>`.
@@ -103,6 +106,7 @@
 ## Reporting / storage gotchas
 - `v0.2` reports should write into `v0.2/reports/` by default; SQLite history should live in `v0.2/data/vaecos_tracking.db`.
 - `v0.2` analytics commands read SQLite history, not report files.
+- Exported reports should include `carrier` context now that runs can mix transportistas.
 
 ## When editing
 - `v0.2` is the default target for all current functionality.

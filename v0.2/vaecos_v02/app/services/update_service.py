@@ -127,7 +127,7 @@ def apply_update(settings: Settings, v02_dir: Path) -> str:
     """Find the latest downloaded zip, back up current code, and apply it.
 
     Preserves: .env, data/ (SQLite), reports/, backups/.
-    Replaces:  vaecos_v02/, cli.py, version.json.
+    Replaces code for both v0.2 and v0.3 plus root launch/docs files.
     """
     updates_dir = settings.updates_dir
     if not updates_dir.exists():
@@ -160,6 +160,11 @@ def apply_update(settings: Settings, v02_dir: Path) -> str:
         v02_dir / "vaecos_v02",
         v02_dir / "cli.py",
         v02_dir / "version.json",
+        project_root / "v0.3",
+        project_root / "iniciar.bat",
+        project_root / "actualizar.bat",
+        project_root / "README.md",
+        project_root / "AGENTS.md",
     ]
     with zipfile.ZipFile(backup_path, "w", zipfile.ZIP_DEFLATED) as bz:
         for src in code_sources:
@@ -193,6 +198,7 @@ def apply_update(settings: Settings, v02_dir: Path) -> str:
 
         # Use the shallowest match (closest to the root of the zip).
         zip_v02_dir = min(candidates, key=lambda p: len(p.parts)).parent
+        zip_root = zip_v02_dir.parent
 
         # Replace vaecos_v02 package.
         src_pkg = zip_v02_dir / "vaecos_v02"
@@ -215,9 +221,28 @@ def apply_update(settings: Settings, v02_dir: Path) -> str:
         if src_version.exists():
             shutil.copy2(src_version, v02_dir / "version.json")
 
+        # Replace v0.3 app if present in zip.
+        src_v03 = zip_root / "v0.3"
+        dst_v03 = project_root / "v0.3"
+        if src_v03.exists() and src_v03.is_dir():
+            if dst_v03.exists():
+                shutil.rmtree(dst_v03)
+            shutil.copytree(
+                src_v03,
+                dst_v03,
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+            )
+
+        # Replace root helper files if present in zip.
+        for relative_path in ["iniciar.bat", "actualizar.bat", "README.md", "AGENTS.md"]:
+            src_file = zip_root / relative_path
+            if src_file.exists() and src_file.is_file():
+                shutil.copy2(src_file, project_root / relative_path)
+
     return (
         f"Actualizacion aplicada desde: {latest_zip.name}\n"
         f"Backup guardado en:           {backup_path}\n"
+        "Se actualizaron v0.2, v0.3 y scripts raiz cuando estuvieron presentes en el paquete.\n"
         "Reinicia la aplicacion para que los cambios tomen efecto."
     )
 

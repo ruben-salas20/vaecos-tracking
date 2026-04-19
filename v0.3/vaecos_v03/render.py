@@ -10,6 +10,7 @@ def layout(title: str, body: str) -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{escape(title)} — VAECOS</title>
+  <link rel="icon" type="image/png" href="/static/logo.png">
   <style>
     :root {{
       --bg:            #f0f2f8;
@@ -17,8 +18,9 @@ def layout(title: str, body: str) -> str:
       --border:        #e2e8f0;
       --text:          #1e293b;
       --muted:         #64748b;
-      --primary:       #2563eb;
-      --primary-dark:  #1d4ed8;
+      --primary:       #dc2626;
+      --primary-dark:  #b91c1c;
+      --accent:        #3b82f6;
       --sidebar-bg:    #0f172a;
       --sidebar-text:  #e2e8f0;
       --sidebar-muted: #94a3b8;
@@ -46,11 +48,16 @@ def layout(title: str, body: str) -> str:
       position: sticky; top: 0; height: 100vh; overflow-y: auto;
     }}
     .sidebar-brand {{
-      padding: 22px 18px 18px;
+      padding: 18px 18px 16px;
       border-bottom: 1px solid rgba(255,255,255,.07);
     }}
-    .brand {{ font-size: 1rem; font-weight: 700; letter-spacing: -.01em; color: #fff; }}
-    .brand-sub {{ color: var(--sidebar-muted); font-size: .75rem; margin-top: 3px; }}
+    .brand-logo-wrap {{
+      background: #fff; border-radius: 10px; padding: 8px 12px;
+      display: inline-block; margin-bottom: 8px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.15);
+    }}
+    .brand-logo {{ height: 38px; width: auto; display: block; }}
+    .brand-sub {{ color: var(--sidebar-muted); font-size: .75rem; margin-top: 2px; letter-spacing: .02em; }}
     .sidebar-nav {{ padding: 14px 10px; flex: 1; display: flex; flex-direction: column; gap: 18px; }}
     .nav-group {{ display: flex; flex-direction: column; gap: 2px; }}
     .nav-label {{
@@ -64,8 +71,8 @@ def layout(title: str, body: str) -> str:
     }}
     .nav a:hover {{ background: rgba(255,255,255,.07); text-decoration: none; color: #fff; }}
     .nav a.nav-active {{ background: rgba(255,255,255,.11); color: #fff; font-weight: 600; }}
-    .nav-primary {{ color: #93c5fd !important; }}
-    .nav-primary.nav-active {{ color: #fff !important; background: rgba(59,130,246,.25) !important; }}
+    .nav-primary {{ color: #fca5a5 !important; }}
+    .nav-primary.nav-active {{ color: #fff !important; background: rgba(220,38,38,.28) !important; }}
 
     /* ── Main content ─────────────────────────────────── */
     .main {{ padding: 28px 32px; max-width: 1400px; }}
@@ -176,6 +183,9 @@ def layout(title: str, body: str) -> str:
     .pill-error    {{ background: #fee2e2; color: #991b1b; }}
     .pill-apply    {{ background: #dcfce7; color: #166534; }}
     .pill-dry      {{ background: #f1f5f9; color: #475569; }}
+    .pill-carrier  {{ text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.72rem; }}
+    .pill-carrier-effi   {{ background: #fee2e2; color: #991b1b; }}
+    .pill-carrier-guatex {{ background: #e0e7ff; color: #3730a3; }}
 
     /* ── Forms ────────────────────────────────────────── */
     .filters {{ display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }}
@@ -188,10 +198,22 @@ def layout(title: str, body: str) -> str:
     }}
     input:focus, select:focus, textarea:focus {{
       border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+      box-shadow: 0 0 0 3px rgba(220,38,38,.12);
     }}
     textarea {{ min-height: 80px; resize: vertical; }}
     .stack {{ display: flex; flex-direction: column; gap: 14px; }}
+
+    /* ── Charts ───────────────────────────────────────── */
+    .chart-wrap {{
+      background: var(--surface); border-radius: var(--radius);
+      padding: 16px 18px; box-shadow: var(--shadow-sm); border: 1px solid var(--border);
+      margin-bottom: 12px;
+    }}
+    .chart-title {{
+      font-size: .78rem; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px;
+    }}
+    .chart-grid-2 {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; }}
 
     /* ── Misc ─────────────────────────────────────────── */
     .muted {{ color: var(--muted); }}
@@ -216,7 +238,9 @@ def layout(title: str, body: str) -> str:
   <div class="app">
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <div class="brand">VAECOS</div>
+        <div class="brand-logo-wrap">
+          <img src="/static/logo.png" alt="VAECOS" class="brand-logo">
+        </div>
         <div class="brand-sub">Seguimiento de guias</div>
       </div>
       <div class="sidebar-nav">
@@ -234,15 +258,16 @@ def layout(title: str, body: str) -> str:
           </nav>
         </div>
         <div class="nav-group">
-          <div class="nav-label">Acciones</div>
+          <div class="nav-label">Inteligencia</div>
           <nav class="nav">
-            <a href="/run/new">Nueva corrida</a>
+            <a href="/analytics">Analytics</a>
           </nav>
         </div>
         <div class="nav-group">
-          <div class="nav-label">Configuracion</div>
+          <div class="nav-label">Acciones</div>
           <nav class="nav">
-            <a href="/rules">Reglas de decision</a>
+            <a href="/run/new">Nueva corrida</a>
+            <a href="/rules">Reglas</a>
           </nav>
         </div>
       </div>
@@ -259,7 +284,8 @@ def layout(title: str, body: str) -> str:
       if (href === '/')          {{ active = (path === '/'); }}
       else if (href === '/runs') {{ active = (path === '/runs' || path.startsWith('/runs/')); }}
       else if (href === '/run/new') {{ active = path.startsWith('/run/'); }}
-      else if (href === '/rules') {{ active = (path === '/rules' || path.startsWith('/rules/')); }}
+      else if (href === '/analytics') {{ active = (path === '/analytics' || path.startsWith('/clients/')); }}
+      else if (href === '/rules') {{ active = path.startsWith('/rules'); }}
       else                       {{ active = (path === href); }}
       if (active) a.classList.add('nav-active');
     }});
@@ -348,7 +374,174 @@ def mode_badge(mode: str) -> str:
     return '<span class="pill pill-dry">dry-run</span>'
 
 
-def rule_enabled_pill(enabled: bool) -> str:
-    if enabled:
-        return '<span class="pill pill-apply">activa</span>'
-    return '<span class="pill pill-unchanged">inactiva</span>'
+def carrier_badge(carrier: str | None) -> str:
+    name = (carrier or "effi").strip().lower() or "effi"
+    _classes = {
+        "effi":   "pill pill-carrier pill-carrier-effi",
+        "guatex": "pill pill-carrier pill-carrier-guatex",
+        "*":      "pill pill-carrier",
+    }
+    klass = _classes.get(name, "pill pill-carrier")
+    label = "todos" if name == "*" else name
+    return f'<span class="{klass}">{escape(label)}</span>'
+
+
+def line_chart(
+    title: str,
+    points: list[tuple[str, float]],
+    width: int = 640,
+    height: int = 200,
+    color: str = "#dc2626",
+) -> str:
+    """SVG line chart. points is a list of (label, value); x-axis is discrete by index."""
+    if not points:
+        return (
+            '<div class="chart-wrap"><div class="chart-title">'
+            f'{escape(title)}</div>'
+            '<p class="muted" style="padding:20px 4px">Sin datos en el periodo.</p></div>'
+        )
+
+    margin_x, margin_top, margin_bottom = 36, 12, 28
+    plot_w = width - margin_x * 2
+    plot_h = height - margin_top - margin_bottom
+    values = [p[1] for p in points]
+    max_v = max(values) or 1
+    n = len(points)
+
+    def x_for(i: int) -> float:
+        if n == 1:
+            return margin_x + plot_w / 2
+        return margin_x + (plot_w * i / (n - 1))
+
+    def y_for(v: float) -> float:
+        return margin_top + plot_h - (plot_h * v / max_v)
+
+    coords = " ".join(f"{x_for(i):.1f},{y_for(v):.1f}" for i, v in enumerate(values))
+    dots = "".join(
+        f'<circle cx="{x_for(i):.1f}" cy="{y_for(v):.1f}" r="3" fill="{color}">'
+        f'<title>{escape(points[i][0])}: {v:g}</title></circle>'
+        for i, v in enumerate(values)
+    )
+    grid_y = []
+    for step in (0.25, 0.5, 0.75, 1.0):
+        gy = margin_top + plot_h - plot_h * step
+        grid_y.append(
+            f'<line x1="{margin_x}" y1="{gy:.1f}" x2="{margin_x + plot_w}" y2="{gy:.1f}" '
+            f'stroke="#e2e8f0" stroke-width="1" stroke-dasharray="2 3"/>'
+        )
+        label_v = max_v * step
+        grid_y.append(
+            f'<text x="{margin_x - 6}" y="{gy + 3:.1f}" font-size="9" fill="#94a3b8" '
+            f'text-anchor="end">{label_v:g}</text>'
+        )
+    x_ticks = []
+    tick_every = max(1, n // 8)
+    for i, (label, _) in enumerate(points):
+        if i % tick_every != 0 and i != n - 1:
+            continue
+        short = label[5:] if len(label) >= 10 else label
+        x_ticks.append(
+            f'<text x="{x_for(i):.1f}" y="{height - 8}" font-size="9" fill="#64748b" '
+            f'text-anchor="middle">{escape(short)}</text>'
+        )
+
+    return (
+        '<div class="chart-wrap">'
+        f'<div class="chart-title">{escape(title)}</div>'
+        f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
+        'preserveAspectRatio="xMidYMid meet" role="img">'
+        + "".join(grid_y)
+        + f'<polyline fill="none" stroke="{color}" stroke-width="2" '
+        f'stroke-linejoin="round" points="{coords}"/>'
+        + dots
+        + "".join(x_ticks)
+        + "</svg></div>"
+    )
+
+
+def stacked_bar_chart(
+    title: str,
+    days: list[str],
+    series: list[tuple[str, list[int], str]],
+    width: int = 640,
+    height: int = 220,
+) -> str:
+    """SVG stacked bar chart. series is [(label, values_per_day, color)]."""
+    if not days or not series:
+        return (
+            '<div class="chart-wrap"><div class="chart-title">'
+            f'{escape(title)}</div>'
+            '<p class="muted" style="padding:20px 4px">Sin datos en el periodo.</p></div>'
+        )
+
+    margin_x, margin_top, margin_bottom = 36, 12, 48
+    plot_w = width - margin_x * 2
+    plot_h = height - margin_top - margin_bottom
+    n = len(days)
+    totals = [sum(s[1][i] for s in series) for i in range(n)]
+    max_total = max(totals) or 1
+    bar_w = max(4, plot_w / max(n, 1) * 0.7)
+    gap = plot_w / max(n, 1) - bar_w
+
+    grid_y = []
+    for step in (0.25, 0.5, 0.75, 1.0):
+        gy = margin_top + plot_h - plot_h * step
+        grid_y.append(
+            f'<line x1="{margin_x}" y1="{gy:.1f}" x2="{margin_x + plot_w}" y2="{gy:.1f}" '
+            f'stroke="#e2e8f0" stroke-width="1" stroke-dasharray="2 3"/>'
+        )
+        label_v = max_total * step
+        grid_y.append(
+            f'<text x="{margin_x - 6}" y="{gy + 3:.1f}" font-size="9" fill="#94a3b8" '
+            f'text-anchor="end">{label_v:g}</text>'
+        )
+
+    bars = []
+    for i, day in enumerate(days):
+        x = margin_x + i * (bar_w + gap) + gap / 2
+        cursor_y = margin_top + plot_h
+        for label, values, color in series:
+            v = values[i]
+            if v <= 0:
+                continue
+            h_px = plot_h * v / max_total
+            cursor_y -= h_px
+            bars.append(
+                f'<rect x="{x:.1f}" y="{cursor_y:.1f}" width="{bar_w:.1f}" '
+                f'height="{h_px:.1f}" fill="{color}">'
+                f'<title>{escape(day)} — {escape(label)}: {v}</title></rect>'
+            )
+
+    x_ticks = []
+    tick_every = max(1, n // 10)
+    for i, day in enumerate(days):
+        if i % tick_every != 0 and i != n - 1:
+            continue
+        short = day[5:] if len(day) >= 10 else day
+        x_center = margin_x + i * (bar_w + gap) + gap / 2 + bar_w / 2
+        x_ticks.append(
+            f'<text x="{x_center:.1f}" y="{height - 30}" font-size="9" fill="#64748b" '
+            f'text-anchor="middle">{escape(short)}</text>'
+        )
+
+    legend_items = []
+    lx = margin_x
+    for label, _values, color in series:
+        legend_items.append(
+            f'<rect x="{lx}" y="{height - 16}" width="10" height="10" fill="{color}" rx="2"/>'
+            f'<text x="{lx + 14}" y="{height - 7}" font-size="10" fill="#475569">'
+            f'{escape(label)}</text>'
+        )
+        lx += 14 + len(label) * 6 + 14
+
+    return (
+        '<div class="chart-wrap">'
+        f'<div class="chart-title">{escape(title)}</div>'
+        f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
+        'preserveAspectRatio="xMidYMid meet" role="img">'
+        + "".join(grid_y)
+        + "".join(bars)
+        + "".join(x_ticks)
+        + "".join(legend_items)
+        + "</svg></div>"
+    )

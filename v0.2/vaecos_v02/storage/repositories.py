@@ -48,15 +48,16 @@ class RunRepository:
         self.connection.execute(
             """
             INSERT INTO run_results (
-                run_id, guia, cliente, estado_notion_actual, estado_effi_actual,
+                run_id, guia, cliente, carrier, estado_notion_actual, estado_effi_actual,
                 estado_propuesto, resultado, motivo, requiere_accion,
                 actualizacion_notion, error
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
                 result.guia,
                 result.cliente,
+                result.carrier,
                 result.estado_notion_actual,
                 result.estado_effi_actual,
                 result.estado_propuesto,
@@ -121,7 +122,7 @@ class RunRepository:
     def get_results_for_run(self, run_id: int) -> list[sqlite3.Row]:
         cursor = self.connection.execute(
             """
-            SELECT guia, cliente, estado_notion_actual, estado_effi_actual,
+            SELECT guia, cliente, carrier, estado_notion_actual, estado_effi_actual,
                    estado_propuesto, resultado, motivo, requiere_accion,
                    actualizacion_notion, error
             FROM run_results
@@ -190,8 +191,9 @@ class RunRepository:
     def get_guide_history(self, guia: str, limit: int = 10) -> list[sqlite3.Row]:
         cursor = self.connection.execute(
             """
-            SELECT rr.run_id, r.started_at, r.mode, rr.resultado, rr.estado_notion_actual,
-                   rr.estado_effi_actual, rr.estado_propuesto, rr.actualizacion_notion, rr.motivo, rr.error
+            SELECT rr.run_id, r.started_at, r.mode, rr.resultado, rr.carrier,
+                   rr.estado_notion_actual, rr.estado_effi_actual, rr.estado_propuesto,
+                   rr.actualizacion_notion, rr.motivo, rr.error
             FROM run_results rr
             JOIN runs r ON r.id = rr.run_id
             WHERE rr.guia = ?

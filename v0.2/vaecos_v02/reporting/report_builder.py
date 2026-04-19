@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import csv
 import os
 import subprocess
@@ -8,6 +9,19 @@ from pathlib import Path
 from html import escape
 
 from vaecos_v02.core.models import ProcessingResult, RunContext
+
+_LOGO_CANDIDATES = [
+    Path(__file__).resolve().parents[3] / "v0.3" / "vaecos_v03" / "static" / "logo.png",
+    Path(__file__).resolve().parents[3] / "Logo_vaecos-sin fondo.png",
+]
+
+
+def _logo_data_uri() -> str | None:
+    for candidate in _LOGO_CANDIDATES:
+        if candidate.is_file():
+            encoded = base64.b64encode(candidate.read_bytes()).decode("ascii")
+            return f"data:image/png;base64,{encoded}"
+    return None
 
 
 def write_reports(
@@ -38,6 +52,7 @@ def _write_csv(csv_path: Path, results: list[ProcessingResult]) -> None:
             fieldnames=[
                 "cliente",
                 "guia",
+                "carrier",
                 "estado_notion_actual",
                 "estado_effi_actual",
                 "estado_propuesto",
@@ -114,15 +129,16 @@ def _append_section(
         return
     lines.extend(
         [
-            "| Guia | Cliente | Notion | Effi | Propuesto | Motivo | Accion | Actualizacion Notion | Error |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+            "| Guia | Cliente | Carrier | Notion | Effi | Propuesto | Motivo | Accion | Actualizacion Notion | Error |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
     )
     for result in results:
         lines.append(
-            "| {guia} | {cliente} | {notion} | {effi} | {propuesto} | {motivo} | {accion} | {actualizacion} | {error} |".format(
+            "| {guia} | {cliente} | {carrier} | {notion} | {effi} | {propuesto} | {motivo} | {accion} | {actualizacion} | {error} |".format(
                 guia=_md_cell(result.guia),
                 cliente=_md_cell(result.cliente),
+                carrier=_md_cell(result.carrier),
                 notion=_md_cell(result.estado_notion_actual),
                 effi=_md_cell(result.estado_effi_actual or "N/D"),
                 propuesto=_md_cell(result.estado_propuesto or "N/D"),
@@ -306,6 +322,15 @@ def _markdown_to_html(lines: list[str]) -> str:
             index += 1
         blocks.append(f"<p>{_inline_markup(' '.join(paragraph_lines))}</p>")
 
+    logo_uri = _logo_data_uri()
+    header_html = (
+        '<div class="brand-header">'
+        + (f'<img src="{logo_uri}" alt="VAECOS" class="brand-logo">' if logo_uri else '')
+        + '<div class="brand-text">'
+        + '<div class="brand-name">VAECOS</div>'
+        + '<div class="brand-tagline">Seguimiento de guias Cargo Expreso</div>'
+        + '</div></div>'
+    )
     return f"""
 <!doctype html>
 <html lang="es">
@@ -315,18 +340,27 @@ def _markdown_to_html(lines: list[str]) -> str:
   <style>
     @page {{ size: A4; margin: 18mm 12mm; }}
     body {{ font-family: Arial, sans-serif; color: #18202a; font-size: 11px; line-height: 1.4; }}
-    h1 {{ font-size: 22px; margin: 0 0 14px; color: #0f172a; }}
-    h2 {{ font-size: 15px; margin: 20px 0 8px; color: #1d4ed8; page-break-after: avoid; }}
+    .brand-header {{
+      display: flex; align-items: center; gap: 14px;
+      border-bottom: 3px solid #dc2626; padding-bottom: 10px; margin-bottom: 18px;
+    }}
+    .brand-logo {{ height: 44px; width: auto; }}
+    .brand-text {{ display: flex; flex-direction: column; }}
+    .brand-name {{ font-size: 18px; font-weight: 700; color: #0f172a; letter-spacing: .04em; }}
+    .brand-tagline {{ font-size: 10px; color: #dc2626; font-weight: 600; letter-spacing: .02em; }}
+    h1 {{ font-size: 20px; margin: 0 0 14px; color: #0f172a; }}
+    h2 {{ font-size: 15px; margin: 20px 0 8px; color: #dc2626; page-break-after: avoid; }}
     p {{ margin: 0 0 8px; }}
     ul {{ margin: 0 0 10px 18px; padding: 0; }}
     table {{ width: 100%; border-collapse: collapse; margin: 10px 0 16px; table-layout: fixed; font-size: 9px; }}
     th, td {{ border: 1px solid #cbd5e1; padding: 6px 7px; vertical-align: top; word-wrap: break-word; }}
     th {{ background: #e2e8f0; text-align: left; }}
     tr:nth-child(even) td {{ background: #f8fafc; }}
-    code {{ background: #eef2ff; padding: 1px 4px; border-radius: 4px; }}
+    code {{ background: #fef2f2; padding: 1px 4px; border-radius: 4px; }}
   </style>
 </head>
 <body>
+  {header_html}
   {''.join(blocks)}
 </body>
 </html>

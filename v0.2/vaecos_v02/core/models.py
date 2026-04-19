@@ -10,6 +10,7 @@ class NotionClientRecord:
     nombre: str
     guia: str
     estado_novedad: str
+    carrier: str = "effi"
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,43 @@ class RuleDecision:
     motivo: str
     requiere_accion: str
     review_needed: bool = False
+    matched_rule_id: int | None = None
+    matched_rule_name: str | None = None
+
+
+@dataclass(frozen=True)
+class Rule:
+    """Data-driven rule that maps (carrier, estado, novelty, days) to a decision.
+
+    Fields:
+      - estado_match_kind: 'any' (skip) | 'equals_one_of' | 'contains_any_of'
+      - estado_match_values: list[str] (lowercase, normalized for matching)
+      - novelty_match_kind: 'any' | 'contains_any_of'
+      - novelty_match_values: list[str] (lowercase, matched against joined novelty history)
+      - days_comparator: None | 'gt' | 'gte' | 'lt' | 'lte' | 'no_date'
+        * 'no_date' fires only when latest status date cannot be parsed
+        * numeric comparators require a parseable date (no match if missing)
+      - days_threshold: int | None (required unless comparator is None or 'no_date')
+      - motivo_template: supports {days}, {estado_actual}, {estado_upper}, {matched_novelty}
+    """
+    id: int | None
+    carrier: str
+    name: str
+    priority: int
+    enabled: bool
+    estado_match_kind: str
+    estado_match_values: list[str]
+    novelty_match_kind: str
+    novelty_match_values: list[str]
+    days_comparator: str | None
+    days_threshold: int | None
+    estado_propuesto: str | None
+    motivo_template: str
+    requiere_accion: str
+    review_needed: bool
+    notes: str = ""
+    updated_at: str = ""
+    updated_by: str = "operadora"
 
 
 @dataclass(frozen=True)
@@ -54,6 +92,7 @@ class ProcessingResult:
     requiere_accion: str
     actualizacion_notion: str = ""
     error: str = ""
+    carrier: str = "effi"
 
 
 @dataclass(frozen=True)

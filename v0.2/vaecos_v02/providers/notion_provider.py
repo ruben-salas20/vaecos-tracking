@@ -152,8 +152,14 @@ class NotionProvider:
         estado_novedad = self._read_select(properties.get("Estado novedad"))
         if not page_id or not nombre or not guia or not estado_novedad:
             return None
+        carrier_raw = self._read_select(properties.get("Transportista")) or "effi"
+        carrier = carrier_raw.strip().lower() or "effi"
         return NotionClientRecord(
-            page_id=page_id, nombre=nombre, guia=guia, estado_novedad=estado_novedad
+            page_id=page_id,
+            nombre=nombre,
+            guia=guia,
+            estado_novedad=estado_novedad,
+            carrier=carrier,
         )
 
     @staticmethod

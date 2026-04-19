@@ -6,12 +6,14 @@ from pathlib import Path
 
 from vaecos_v02.app.config import Settings
 from vaecos_v02.core.models import EffiTrackingData, ProcessingResult, RunContext
-from vaecos_v02.core.rules import decide_status_with_db
-from vaecos_v02.providers.effi_provider import EffiProvider
+from vaecos_v02.core.rules import DEFAULT_RULES, decide_status
+from vaecos_v02.providers.carrier import Carrier, CarrierConfig
+from vaecos_v02.providers.carriers import make_carrier
 from vaecos_v02.providers.notion_provider import NotionProvider
 from vaecos_v02.reporting.report_builder import write_reports
 from vaecos_v02.storage.db import clear_history, connect, init_db
-from vaecos_v02.storage.repositories import RunRepository, RulesRepository
+from vaecos_v02.storage.repositories import RunRepository
+from vaecos_v02.storage.rules_repository import RulesRepository
 
 _MAX_EFFI_WORKERS = 8
 
@@ -55,32 +57,46 @@ def execute_tracking(
         run_dir=str(run_dir),
         today=started_at.date(),
     )
-    effi = EffiProvider(
-        settings.effi_timeout_seconds,
-        run_dir / "raw_html",
-        save_raw_html or settings.save_raw_html,
+    carrier_config = CarrierConfig(
+        timeout_seconds=settings.effi_timeout_seconds,
+        raw_html_dir=run_dir / "raw_html",
+        save_raw_html=save_raw_html or settings.save_raw_html,
     )
+    carriers_cache: dict[str, Carrier] = {}
+
+    def _resolve_carrier(name: str) -> Carrier:
+        key = (name or "effi").strip().lower() or "effi"
+        cached = carriers_cache.get(key)
+        if cached is None:
+            cached = make_carrier(key, carrier_config)
+            carriers_cache[key] = cached
+        return cached
 
     connection = connect(settings.sqlite_db_path)
     init_db(connection)
     rules_repo = RulesRepository(connection)
-    rules_repo.seed_if_empty()
-    active_rules = rules_repo.list_enabled()
+    rules_repo.seed_if_empty(DEFAULT_RULES)
+    active_rules = rules_repo.list_rules(only_enabled=True)
     repository = RunRepository(connection)
     run_id = repository.create_run(started_at, dry_run)
 
     record_map = {record.guia.upper(): record for record in records}
 
-    # Phase 1: fetch all guides from Effi in parallel.
+    # Phase 1: fetch all guides from each carrier in parallel.
     # Only fetch guides that have a matching Notion record.
     guides_to_fetch = [g for g in guides if record_map.get(g.upper()) is not None]
     tracking_map: dict[str, EffiTrackingData | Exception] = {}
     if guides_to_fetch:
         workers = min(len(guides_to_fetch), _MAX_EFFI_WORKERS)
+
+        def _fetch(guide: str) -> EffiTrackingData:
+            record = record_map[guide.upper()]
+            carrier = _resolve_carrier(record.carrier)
+            return carrier.fetch_tracking(guide)
+
         with ThreadPoolExecutor(max_workers=workers) as pool:
             future_to_guide = {
-                pool.submit(effi.fetch_tracking, guide): guide
-                for guide in guides_to_fetch
+                pool.submit(_fetch, guide): guide for guide in guides_to_fetch
             }
             for future in as_completed(future_to_guide):
                 guide = future_to_guide[future]
@@ -121,10 +137,11 @@ def execute_tracking(
                 estado_effi_actual=None,
                 estado_propuesto=None,
                 resultado="error",
-                motivo="Error durante la consulta o el parsing de Effi.",
+                motivo=f"Error durante la consulta o el parsing de {record.carrier}.",
                 requiere_accion="Revisar manualmente",
                 actualizacion_notion="No actualizado",
                 error=error_msg,
+                carrier=record.carrier,
             )
         else:
             tracking: EffiTrackingData = tracking_or_exc
@@ -139,12 +156,18 @@ def execute_tracking(
                     estado_effi_actual=None,
                     estado_propuesto=None,
                     resultado="parse_error",
-                    motivo="Effi respondio pero no se pudo extraer el estado actual. Posible cambio en la estructura del HTML.",
+                    motivo=f"{record.carrier} respondio pero no se pudo extraer el estado actual. Posible cambio en la estructura del HTML.",
                     requiere_accion="Verificar con --save-raw-html y revisar el parser",
                     actualizacion_notion="No actualizado",
+                    carrier=record.carrier,
                 )
             else:
-                decision = decide_status_with_db(tracking, run_context.today, active_rules)
+                decision = decide_status(
+                    tracking,
+                    run_context.today,
+                    rules=active_rules,
+                    carrier=record.carrier,
+                )
                 if decision.review_needed:
                     resultado = "manual_review"
                 elif decision.estado_propuesto == record.estado_novedad:
@@ -174,6 +197,7 @@ def execute_tracking(
                     motivo=decision.motivo,
                     requiere_accion=decision.requiere_accion,
                     actualizacion_notion=actualizacion_notion,
+                    carrier=record.carrier,
                 )
 
         repository.save_result(run_id, result)

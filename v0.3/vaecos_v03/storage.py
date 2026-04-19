@@ -38,7 +38,7 @@ class DashboardRepository:
             return list(
                 connection.execute(
                     """
-                    SELECT guia, cliente, estado_notion_actual, estado_effi_actual,
+                    SELECT guia, cliente, carrier, estado_notion_actual, estado_effi_actual,
                            estado_propuesto, resultado, motivo, requiere_accion,
                            actualizacion_notion, error
                     FROM run_results
@@ -89,7 +89,7 @@ class DashboardRepository:
             return list(
                 connection.execute(
                     """
-                    SELECT guia, cliente, estado_notion_actual, estado_effi_actual,
+                    SELECT guia, cliente, carrier, estado_notion_actual, estado_effi_actual,
                            estado_propuesto, resultado, motivo, requiere_accion,
                            actualizacion_notion, error
                     FROM run_results
@@ -126,14 +126,212 @@ class DashboardRepository:
             return None
         return int(row["duration"]) if row["duration"] is not None else None
 
+    def kpi_summary(self, days: int = 30) -> sqlite3.Row | None:
+        """Aggregate counters for the analytics KPI cards."""
+        window = f"-{int(days)} days"
+        with self._connect() as connection:
+            return connection.execute(
+                """
+                SELECT
+                    COUNT(DISTINCT r.id) AS total_runs,
+                    COUNT(DISTINCT rr.guia) AS unique_guides,
+                    COUNT(*) AS total_rows,
+                    SUM(CASE WHEN rr.resultado = 'changed'       THEN 1 ELSE 0 END) AS changed,
+                    SUM(CASE WHEN rr.resultado = 'unchanged'     THEN 1 ELSE 0 END) AS unchanged,
+                    SUM(CASE WHEN rr.resultado = 'manual_review' THEN 1 ELSE 0 END) AS manual_review,
+                    SUM(CASE WHEN rr.resultado = 'parse_error'   THEN 1 ELSE 0 END) AS parse_error,
+                    SUM(CASE WHEN rr.resultado = 'error'         THEN 1 ELSE 0 END) AS error
+                FROM run_results rr
+                JOIN runs r ON r.id = rr.run_id
+                WHERE date(r.started_at) >= date('now', ?)
+                """,
+                (window,),
+            ).fetchone()
+
+    def attention_trend(self, days: int = 30) -> list[sqlite3.Row]:
+        """Per-day count of non-unchanged guides in the window."""
+        window = f"-{int(days)} days"
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT date(r.started_at) AS day, COUNT(*) AS total
+                    FROM run_results rr
+                    JOIN runs r ON r.id = rr.run_id
+                    WHERE rr.resultado != 'unchanged'
+                      AND date(r.started_at) >= date('now', ?)
+                    GROUP BY day
+                    ORDER BY day ASC
+                    """,
+                    (window,),
+                ).fetchall()
+            )
+
+    def runs_summary_by_day(self, days: int = 30) -> list[sqlite3.Row]:
+        """Per-day counts and breakdown for the stacked bar chart."""
+        window = f"-{int(days)} days"
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT
+                        date(r.started_at) AS day,
+                        SUM(CASE WHEN rr.resultado = 'unchanged'     THEN 1 ELSE 0 END) AS unchanged,
+                        SUM(CASE WHEN rr.resultado = 'changed'       THEN 1 ELSE 0 END) AS changed,
+                        SUM(CASE WHEN rr.resultado = 'manual_review' THEN 1 ELSE 0 END) AS manual_review,
+                        SUM(CASE WHEN rr.resultado = 'parse_error'   THEN 1 ELSE 0 END) AS parse_error,
+                        SUM(CASE WHEN rr.resultado = 'error'         THEN 1 ELSE 0 END) AS error
+                    FROM run_results rr
+                    JOIN runs r ON r.id = rr.run_id
+                    WHERE date(r.started_at) >= date('now', ?)
+                    GROUP BY day
+                    ORDER BY day ASC
+                    """,
+                    (window,),
+                ).fetchall()
+            )
+
+    def top_problem_clients(self, days: int = 30, limit: int = 10) -> list[sqlite3.Row]:
+        """Clients with the most non-unchanged results in the window."""
+        window = f"-{int(days)} days"
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT
+                        rr.cliente,
+                        COUNT(*) AS total_issues,
+                        SUM(CASE WHEN rr.resultado = 'changed'       THEN 1 ELSE 0 END) AS changed,
+                        SUM(CASE WHEN rr.resultado = 'manual_review' THEN 1 ELSE 0 END) AS manual_review,
+                        SUM(CASE WHEN rr.resultado = 'parse_error'   THEN 1 ELSE 0 END) AS parse_error,
+                        SUM(CASE WHEN rr.resultado = 'error'         THEN 1 ELSE 0 END) AS error,
+                        COUNT(DISTINCT rr.guia) AS unique_guides
+                    FROM run_results rr
+                    JOIN runs r ON r.id = rr.run_id
+                    WHERE rr.resultado != 'unchanged'
+                      AND date(r.started_at) >= date('now', ?)
+                    GROUP BY rr.cliente
+                    ORDER BY total_issues DESC, rr.cliente ASC
+                    LIMIT ?
+                    """,
+                    (window, limit),
+                ).fetchall()
+            )
+
+    def carrier_breakdown(self, days: int = 30) -> list[sqlite3.Row]:
+        """Count rows per carrier + result breakdown within window."""
+        window = f"-{int(days)} days"
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT
+                        COALESCE(rr.carrier, 'effi') AS carrier,
+                        COUNT(*) AS total_rows,
+                        COUNT(DISTINCT rr.guia) AS unique_guides,
+                        SUM(CASE WHEN rr.resultado = 'changed'       THEN 1 ELSE 0 END) AS changed,
+                        SUM(CASE WHEN rr.resultado = 'unchanged'     THEN 1 ELSE 0 END) AS unchanged,
+                        SUM(CASE WHEN rr.resultado = 'manual_review' THEN 1 ELSE 0 END) AS manual_review,
+                        SUM(CASE WHEN rr.resultado = 'parse_error'   THEN 1 ELSE 0 END) AS parse_error,
+                        SUM(CASE WHEN rr.resultado = 'error'         THEN 1 ELSE 0 END) AS error
+                    FROM run_results rr
+                    JOIN runs r ON r.id = rr.run_id
+                    WHERE date(r.started_at) >= date('now', ?)
+                    GROUP BY COALESCE(rr.carrier, 'effi')
+                    ORDER BY total_rows DESC
+                    """,
+                    (window,),
+                ).fetchall()
+            )
+
+    def avg_time_in_status(self, days: int = 90) -> list[sqlite3.Row]:
+        """Approximate how many consecutive runs a guide spends in each Effi status.
+
+        Aggregates consecutive occurrences of (guia, estado_effi_actual) within the window
+        and averages across guides. Not exact SLA, but detects stuck statuses.
+        """
+        window = f"-{int(days)} days"
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    WITH per_guide AS (
+                        SELECT
+                            rr.estado_effi_actual AS status,
+                            rr.guia,
+                            COUNT(*) AS cnt
+                        FROM run_results rr
+                        JOIN runs r ON r.id = rr.run_id
+                        WHERE rr.estado_effi_actual IS NOT NULL
+                          AND rr.estado_effi_actual != ''
+                          AND date(r.started_at) >= date('now', ?)
+                        GROUP BY rr.estado_effi_actual, rr.guia
+                    )
+                    SELECT
+                        status,
+                        ROUND(AVG(cnt), 2) AS avg_runs,
+                        COUNT(DISTINCT guia) AS guides_affected,
+                        MAX(cnt) AS max_runs
+                    FROM per_guide
+                    GROUP BY status
+                    ORDER BY avg_runs DESC, status ASC
+                    """,
+                    (window,),
+                ).fetchall()
+            )
+
+    def client_history(self, cliente: str, days: int = 90) -> list[sqlite3.Row]:
+        """All results for a given client within the window, newest first."""
+        window = f"-{int(days)} days"
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT
+                        rr.run_id, r.started_at, r.mode, rr.carrier,
+                        rr.guia, rr.estado_notion_actual, rr.estado_effi_actual,
+                        rr.estado_propuesto, rr.resultado, rr.motivo,
+                        rr.requiere_accion, rr.error
+                    FROM run_results rr
+                    JOIN runs r ON r.id = rr.run_id
+                    WHERE rr.cliente = ?
+                      AND date(r.started_at) >= date('now', ?)
+                    ORDER BY r.started_at DESC, rr.guia ASC
+                    """,
+                    (cliente, window),
+                ).fetchall()
+            )
+
+    def client_summary(self, cliente: str, days: int = 90) -> sqlite3.Row | None:
+        """Aggregated counters for a single client."""
+        window = f"-{int(days)} days"
+        with self._connect() as connection:
+            return connection.execute(
+                """
+                SELECT
+                    COUNT(DISTINCT rr.guia) AS unique_guides,
+                    COUNT(*) AS total_rows,
+                    SUM(CASE WHEN rr.resultado = 'changed'       THEN 1 ELSE 0 END) AS changed,
+                    SUM(CASE WHEN rr.resultado = 'unchanged'     THEN 1 ELSE 0 END) AS unchanged,
+                    SUM(CASE WHEN rr.resultado = 'manual_review' THEN 1 ELSE 0 END) AS manual_review,
+                    SUM(CASE WHEN rr.resultado = 'parse_error'   THEN 1 ELSE 0 END) AS parse_error,
+                    SUM(CASE WHEN rr.resultado = 'error'         THEN 1 ELSE 0 END) AS error
+                FROM run_results rr
+                JOIN runs r ON r.id = rr.run_id
+                WHERE rr.cliente = ?
+                  AND date(r.started_at) >= date('now', ?)
+                """,
+                (cliente, window),
+            ).fetchone()
+
     def guide_history(self, guide: str, limit: int = 20) -> list[sqlite3.Row]:
         with self._connect() as connection:
             return list(
                 connection.execute(
                     """
-                    SELECT rr.run_id, r.started_at, r.mode, rr.resultado, rr.estado_notion_actual,
-                           rr.estado_effi_actual, rr.estado_propuesto, rr.actualizacion_notion,
-                           rr.motivo, rr.error, rr.cliente
+                    SELECT rr.run_id, r.started_at, r.mode, rr.resultado, rr.carrier,
+                           rr.estado_notion_actual, rr.estado_effi_actual, rr.estado_propuesto,
+                           rr.actualizacion_notion, rr.motivo, rr.error, rr.cliente
                     FROM run_results rr
                     JOIN runs r ON r.id = rr.run_id
                     WHERE rr.guia = ?

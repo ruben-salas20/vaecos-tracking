@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Iterable
 
-from .models import EffiTrackingData, RuleDecision
+from .models import EffiTrackingData, Rule, RuleDecision
 from .utils import normalize_for_match
 
 
@@ -17,43 +18,255 @@ ANOMALIA_PATTERNS = [
 ]
 
 
-def decide_status_with_db(
-    tracking: EffiTrackingData, today: date, rules: list[dict]
-) -> RuleDecision:
-    """Use DB rules when available, otherwise fall back to hardcoded."""
-    if rules:
-        return _decide_from_rules(tracking, today, rules)
-    return decide_status(tracking, today)
+DEFAULT_RULES: list[Rule] = [
+    Rule(
+        id=None,
+        carrier="effi",
+        name="Paquete en agencia (novedad)",
+        priority=10,
+        enabled=True,
+        estado_match_kind="any",
+        estado_match_values=[],
+        novelty_match_kind="contains_any_of",
+        novelty_match_values=["paquete en agencia"],
+        days_comparator=None,
+        days_threshold=None,
+        estado_propuesto="Por recoger (INFORMADO)",
+        motivo_template="Novedad de Effi indica paquete en agencia.",
+        requiere_accion="Avisar al cliente que vaya a recoger",
+        review_needed=False,
+        notes="",
+        updated_by="seed",
+    ),
+    Rule(
+        id=None,
+        carrier="effi",
+        name="Anomalia con novedad del cliente",
+        priority=20,
+        enabled=True,
+        estado_match_kind="equals_one_of",
+        estado_match_values=["anomalia"],
+        novelty_match_kind="contains_any_of",
+        novelty_match_values=list(ANOMALIA_PATTERNS),
+        days_comparator=None,
+        days_threshold=None,
+        estado_propuesto="En novedad",
+        motivo_template="Anomalia con novedad coincidente: {matched_novelty}.",
+        requiere_accion="Hablar con cliente",
+        review_needed=False,
+        notes="",
+        updated_by="seed",
+    ),
+    Rule(
+        id=None,
+        carrier="effi",
+        name="Devolucion",
+        priority=30,
+        enabled=True,
+        estado_match_kind="contains_any_of",
+        estado_match_values=["devolucion", "devolución"],
+        novelty_match_kind="any",
+        novelty_match_values=[],
+        days_comparator=None,
+        days_threshold=None,
+        estado_propuesto="En Devolución",
+        motivo_template="Effi reporta devolución.",
+        requiere_accion="Sin accion",
+        review_needed=False,
+        notes="",
+        updated_by="seed",
+    ),
+    Rule(
+        id=None,
+        carrier="effi",
+        name="Entregado",
+        priority=40,
+        enabled=True,
+        estado_match_kind="equals_one_of",
+        estado_match_values=["entregado"],
+        novelty_match_kind="any",
+        novelty_match_values=[],
+        days_comparator=None,
+        days_threshold=None,
+        estado_propuesto="ENTREGADA",
+        motivo_template="Effi reporta entrega exitosa.",
+        requiere_accion="Sin accion",
+        review_needed=False,
+        notes="",
+        updated_by="seed",
+    ),
+    Rule(
+        id=None,
+        carrier="effi",
+        name="Ruta entrega final sin fecha",
+        priority=49,
+        enabled=True,
+        estado_match_kind="equals_one_of",
+        estado_match_values=["ruta entrega final"],
+        novelty_match_kind="any",
+        novelty_match_values=[],
+        days_comparator="no_date",
+        days_threshold=None,
+        estado_propuesto=None,
+        motivo_template="RUTA ENTREGA FINAL sin fecha valida en historico.",
+        requiere_accion="Revisar manualmente",
+        review_needed=True,
+        notes="",
+        updated_by="seed",
+    ),
+    Rule(
+        id=None,
+        carrier="effi",
+        name="Ruta entrega final estancada",
+        priority=50,
+        enabled=True,
+        estado_match_kind="equals_one_of",
+        estado_match_values=["ruta entrega final"],
+        novelty_match_kind="any",
+        novelty_match_values=[],
+        days_comparator="gt",
+        days_threshold=1,
+        estado_propuesto="Sin movimiento",
+        motivo_template="RUTA ENTREGA FINAL con {days} dias sin cambio.",
+        requiere_accion="Gestionar con encargado",
+        review_needed=False,
+        notes="",
+        updated_by="seed",
+    ),
+    Rule(
+        id=None,
+        carrier="effi",
+        name="Ruta entrega final reciente",
+        priority=51,
+        enabled=True,
+        estado_match_kind="equals_one_of",
+        estado_match_values=["ruta entrega final"],
+        novelty_match_kind="any",
+        novelty_match_values=[],
+        days_comparator="lte",
+        days_threshold=1,
+        estado_propuesto="En ruta de entrega",
+        motivo_template="RUTA ENTREGA FINAL con menos de 1 dia sin cambio.",
+        requiere_accion="Monitorear",
+        review_needed=False,
+        notes="",
+        updated_by="seed",
+    ),
+    Rule(
+        id=None,
+        carrier="effi",
+        name="En ruta de entrega estancada",
+        priority=60,
+        enabled=True,
+        estado_match_kind="equals_one_of",
+        estado_match_values=["en ruta de entrega"],
+        novelty_match_kind="any",
+        novelty_match_values=[],
+        days_comparator="gt",
+        days_threshold=1,
+        estado_propuesto="Sin movimiento",
+        motivo_template="EN RUTA DE ENTREGA con {days} dias sin cambio.",
+        requiere_accion="Gestionar con encargado",
+        review_needed=False,
+        notes="",
+        updated_by="seed",
+    ),
+    Rule(
+        id=None,
+        carrier="effi",
+        name="Almacenado en bodega estancado",
+        priority=70,
+        enabled=True,
+        estado_match_kind="equals_one_of",
+        estado_match_values=["almacenado en bodega"],
+        novelty_match_kind="any",
+        novelty_match_values=[],
+        days_comparator="gt",
+        days_threshold=1,
+        estado_propuesto="Sin movimiento",
+        motivo_template="ALMACENADO EN BODEGA con {days} dias sin cambio.",
+        requiere_accion="Gestionar con encargado",
+        review_needed=False,
+        notes="",
+        updated_by="seed",
+    ),
+    Rule(
+        id=None,
+        carrier="effi",
+        name="Sin recolectar estancado",
+        priority=80,
+        enabled=True,
+        estado_match_kind="equals_one_of",
+        estado_match_values=["sin recolectar"],
+        novelty_match_kind="any",
+        novelty_match_values=[],
+        days_comparator="gt",
+        days_threshold=1,
+        estado_propuesto="Sin movimiento",
+        motivo_template="Sin Recolectar con {days} dias sin cambio.",
+        requiere_accion="Gestionar con encargado",
+        review_needed=False,
+        notes="",
+        updated_by="seed",
+    ),
+]
 
 
-def _decide_from_rules(
-    tracking: EffiTrackingData, today: date, rules: list[dict]
+def decide_status(
+    tracking: EffiTrackingData,
+    today: date,
+    rules: Iterable[Rule] | None = None,
+    *,
+    carrier: str = "effi",
 ) -> RuleDecision:
-    estado_actual = normalize_for_match(tracking.estado_actual or "")
+    """Evaluates rules (priority asc, first match wins) against tracking data.
+
+    When rules is None, uses DEFAULT_RULES. Hardcoded fallback decisions are
+    applied only when no rule matches, to keep the engine safe even with an
+    empty rules table.
+    """
+    rule_list = list(rules) if rules is not None else DEFAULT_RULES
+    rule_list = sorted(
+        (r for r in rule_list if r.enabled and _carrier_matches(r.carrier, carrier)),
+        key=lambda r: r.priority,
+    )
+
+    estado_raw = tracking.estado_actual or ""
+    estado_norm = normalize_for_match(estado_raw)
     latest_status_date = _latest_status_date(tracking)
-    days = _days_since(latest_status_date, today)
     latest_novelty_text = " ".join(
         normalize_for_match(f"{event.novelty} {event.details}")
         for event in tracking.novelty_history
     )
 
-    for rule in rules:
-        if not _rule_matches(rule, estado_actual, latest_novelty_text, days):
+    for rule in rule_list:
+        if not _estado_matches(rule, estado_norm):
             continue
-        motivo = str(rule["motivo"])
-        if days is not None:
-            motivo = motivo.replace("{days}", str(days))
+        novelty_hit = _novelty_match(rule, latest_novelty_text)
+        if novelty_hit is None:
+            continue
+        days = _days_since(latest_status_date, today)
+        if not _days_matches(rule, days):
+            continue
+        motivo = _format_motivo(
+            rule.motivo_template,
+            days=days,
+            estado_actual=estado_raw,
+            matched_novelty=novelty_hit,
+        )
         return RuleDecision(
-            estado_propuesto=rule["estado_propuesto"],
+            estado_propuesto=rule.estado_propuesto,
             motivo=motivo,
-            requiere_accion=rule["requiere_accion"],
-            review_needed=bool(rule["review_needed"]),
+            requiere_accion=rule.requiere_accion,
+            review_needed=rule.review_needed,
+            matched_rule_id=rule.id,
+            matched_rule_name=rule.name,
         )
 
-    if tracking.estado_actual:
+    if estado_raw:
         return RuleDecision(
             estado_propuesto=None,
-            motivo=f"Estado de Effi sin regla exacta: {tracking.estado_actual}.",
+            motivo=f"Estado de Effi sin regla exacta: {estado_raw}.",
             requiere_accion="Revisar manualmente",
             review_needed=True,
         )
@@ -65,120 +278,71 @@ def _decide_from_rules(
     )
 
 
-def _rule_matches(
-    rule: dict, estado_actual: str, latest_novelty_text: str, days: int | None
-) -> bool:
-    if rule["match_estado"] and rule["match_estado"] != estado_actual:
+def _carrier_matches(rule_carrier: str, carrier: str) -> bool:
+    return rule_carrier == "*" or rule_carrier == carrier
+
+
+def _estado_matches(rule: Rule, estado_norm: str) -> bool:
+    if rule.estado_match_kind == "any":
+        return True
+    values = [v.casefold() for v in rule.estado_match_values]
+    if rule.estado_match_kind == "equals_one_of":
+        return estado_norm in values
+    if rule.estado_match_kind == "contains_any_of":
+        return any(v in estado_norm for v in values)
+    return False
+
+
+def _novelty_match(rule: Rule, novelty_text: str) -> str | None:
+    """Returns the matched value (for {matched_novelty}) or '' if 'any' matched.
+
+    Returns None when no match — the rule should be skipped.
+    """
+    if rule.novelty_match_kind == "any":
+        return ""
+    if rule.novelty_match_kind == "contains_any_of":
+        for value in rule.novelty_match_values:
+            needle = value.casefold()
+            if needle and needle in novelty_text:
+                return value
+    return None
+
+
+def _days_matches(rule: Rule, days: int | None) -> bool:
+    comp = rule.days_comparator
+    if comp is None:
+        return True
+    if comp == "no_date":
+        return days is None
+    if days is None:
         return False
-    if rule["match_estado_contains"] and rule["match_estado_contains"] not in estado_actual:
+    threshold = rule.days_threshold
+    if threshold is None:
         return False
-    if rule["match_novelty_contains"] and rule["match_novelty_contains"] not in latest_novelty_text:
-        return False
-    if rule["min_days"] is not None:
-        if days is None or days < int(rule["min_days"]):
-            return False
-    return True
+    if comp == "gt":
+        return days > threshold
+    if comp == "gte":
+        return days >= threshold
+    if comp == "lt":
+        return days < threshold
+    if comp == "lte":
+        return days <= threshold
+    return False
 
 
-def decide_status(tracking: EffiTrackingData, today: date) -> RuleDecision:
-    estado_actual = normalize_for_match(tracking.estado_actual or "")
-    latest_status_date = _latest_status_date(tracking)
-    latest_novelty_text = " ".join(
-        normalize_for_match(f"{event.novelty} {event.details}")
-        for event in tracking.novelty_history
-    )
-
-    if "paquete en agencia" in latest_novelty_text:
-        return RuleDecision(
-            estado_propuesto="Por recoger (INFORMADO)",
-            motivo="Novedad de Effi indica paquete en agencia.",
-            requiere_accion="Avisar al cliente que vaya a recoger",
-        )
-
-    if estado_actual == "anomalia":
-        for pattern in ANOMALIA_PATTERNS:
-            if pattern in latest_novelty_text:
-                return RuleDecision(
-                    estado_propuesto="En novedad",
-                    motivo=f"Anomalia con novedad coincidente: {pattern}.",
-                    requiere_accion="Hablar con cliente",
-                )
-
-    if "devolucion" in estado_actual or "devolución" in estado_actual:
-        return RuleDecision(
-            estado_propuesto="En Devolución",
-            motivo="Effi reporta devolución.",
-            requiere_accion="Sin accion",
-        )
-
-    if estado_actual == "entregado":
-        return RuleDecision(
-            estado_propuesto="ENTREGADA",
-            motivo="Effi reporta entrega exitosa.",
-            requiere_accion="Sin accion",
-        )
-
-    if estado_actual == "ruta entrega final":
-        days = _days_since(latest_status_date, today)
-        if days is None:
-            return RuleDecision(
-                estado_propuesto=None,
-                motivo="RUTA ENTREGA FINAL sin fecha valida en historico.",
-                requiere_accion="Revisar manualmente",
-                review_needed=True,
-            )
-        if days > 1:
-            return RuleDecision(
-                estado_propuesto="Sin movimiento",
-                motivo=f"RUTA ENTREGA FINAL con {days} dias sin cambio.",
-                requiere_accion="Gestionar con encargado",
-            )
-        return RuleDecision(
-            estado_propuesto="En ruta de entrega",
-            motivo="RUTA ENTREGA FINAL con menos de 1 dia sin cambio.",
-            requiere_accion="Monitorear",
-        )
-
-    if estado_actual == "en ruta de entrega":
-        days = _days_since(latest_status_date, today)
-        if days is not None and days > 1:
-            return RuleDecision(
-                estado_propuesto="Sin movimiento",
-                motivo=f"EN RUTA DE ENTREGA con {days} dias sin cambio.",
-                requiere_accion="Gestionar con encargado",
-            )
-
-    if estado_actual == "almacenado en bodega":
-        days = _days_since(latest_status_date, today)
-        if days is not None and days > 1:
-            return RuleDecision(
-                estado_propuesto="Sin movimiento",
-                motivo=f"ALMACENADO EN BODEGA con {days} dias sin cambio.",
-                requiere_accion="Gestionar con encargado",
-            )
-
-    if estado_actual == "sin recolectar":
-        days = _days_since(latest_status_date, today)
-        if days is not None and days > 1:
-            return RuleDecision(
-                estado_propuesto="Sin movimiento",
-                motivo=f"Sin Recolectar con {days} dias sin cambio.",
-                requiere_accion="Gestionar con encargado",
-            )
-
-    if tracking.estado_actual:
-        return RuleDecision(
-            estado_propuesto=None,
-            motivo=f"Estado de Effi sin regla exacta: {tracking.estado_actual}.",
-            requiere_accion="Revisar manualmente",
-            review_needed=True,
-        )
-
-    return RuleDecision(
-        estado_propuesto=None,
-        motivo="No se pudo extraer el estado actual de Effi.",
-        requiere_accion="Revisar manualmente",
-        review_needed=True,
+def _format_motivo(
+    template: str,
+    *,
+    days: int | None,
+    estado_actual: str,
+    matched_novelty: str,
+) -> str:
+    days_str = str(days) if days is not None else "-"
+    return template.format(
+        days=days_str,
+        estado_actual=estado_actual,
+        estado_upper=estado_actual.upper(),
+        matched_novelty=matched_novelty,
     )
 
 
