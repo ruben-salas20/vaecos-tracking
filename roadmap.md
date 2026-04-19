@@ -97,7 +97,7 @@
   - `ruben-salas20/vaecos-tracking`
 - Remoto configurado en `origin`.
 - Releases publicadas:
-  - `v0.2.0`, `v0.2.1`, `v0.3.0`
+  - `v0.2.0`, `v0.2.1`, `v0.3.0`, `v0.3.1`
 - Asset de release usado para updates:
   - `.zip` publicado manualmente en GitHub Releases
 

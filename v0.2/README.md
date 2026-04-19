@@ -143,6 +143,12 @@ Descargar la ultima actualizacion disponible:
 python v0.2/cli.py download-update
 ```
 
+Aplicar la ultima actualizacion descargada:
+
+```powershell
+python v0.2/cli.py apply-update
+```
+
 ## SQLite
 
 SQLite no reemplaza Notion en esta etapa.
@@ -168,6 +174,7 @@ Esto prepara la base para trazabilidad, auditoria y crecimiento futuro.
 - `version`: muestra la version local de la app
 - `check-update`: revisa si hay una nueva release en GitHub
 - `download-update`: descarga el paquete de la ultima release disponible
+- `apply-update`: aplica la ultima actualizacion descargada preservando `.env`, SQLite y reportes
 - `tui`: abre un menu interactivo en terminal para usar el sistema sin memorizar comandos
 
 ## Modos reales
@@ -195,6 +202,7 @@ Desde la TUI puedes:
 - ver la version local
 - buscar actualizaciones
 - descargar una actualizacion
+- instalar una actualizacion descargada
 
 ## Actualizaciones
 
@@ -213,7 +221,8 @@ Notas:
 - si el repo es privado, define `V02_UPDATE_GITHUB_TOKEN` con un token que tenga permiso `repo`
 - `check-update` solo consulta la ultima release publicada
 - `download-update` descarga el primer asset `.zip` de la release si existe; si no, usa el `zipball` de GitHub
-- la actualizacion descargada no se aplica sola todavia; se deja en `V02_UPDATES_DIR` para reemplazo controlado
+- `apply-update` aplica el zip mas reciente descargado, crea un backup automatico en `backups/` y preserva `.env`, `v0.2/data/` y `v0.2/reports/`
+- si el paquete de release incluye `v0.3/` y archivos raiz, esos tambien se actualizan
 
 ## Tests
 

@@ -40,6 +40,14 @@ actualizar.bat
 - `v0.3`
 - scripts raiz como `iniciar.bat` y `actualizar.bat`
 
+Tambien puedes hacerlo manualmente desde CLI:
+
+```powershell
+python v0.2/cli.py check-update
+python v0.2/cli.py download-update
+python v0.2/cli.py apply-update
+```
+
 ## CLI (v0.2)
 
 Entrypoint principal:
@@ -55,6 +63,7 @@ python v0.2/cli.py --dry-run
 python v0.2/cli.py --apply
 python v0.2/cli.py --guides B263378877-1 --dry-run
 python v0.2/cli.py tui
+python v0.2/cli.py check-update
 python v0.2/cli.py apply-update
 ```
 
