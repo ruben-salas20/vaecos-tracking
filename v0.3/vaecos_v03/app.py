@@ -16,8 +16,10 @@ if str(V02_ROOT) not in sys.path:
 
 from vaecos_v02.app.config import load_settings as load_v02_settings
 from vaecos_v02.app.services.run_tracking import execute_tracking
+from vaecos_v02.storage.db import connect as db_connect, init_db, seed_default_rules
+from vaecos_v02.storage.repositories import RulesRepository
 from vaecos_v03.config import Settings, load_settings
-from vaecos_v03.render import alert, button, card_grid, hero, h, layout, mode_badge, panel, p, result_pill, table
+from vaecos_v03.render import alert, button, card_grid, hero, h, layout, mode_badge, panel, p, result_pill, rule_enabled_pill, table
 from vaecos_v03.storage import DashboardRepository
 
 # In-memory store for background run jobs: token -> {status, run_id, error}
@@ -43,6 +45,7 @@ def main() -> int:
         port=args.port or settings.port,
     )
     repo = DashboardRepository(settings.sqlite_db_path)
+    _bootstrap_db(settings.sqlite_db_path)
 
     latest = repo.latest_run()
     if args.check:
@@ -62,6 +65,19 @@ def main() -> int:
     finally:
         server.server_close()
     return 0
+
+
+def _bootstrap_db(db_path) -> None:
+    conn = db_connect(db_path)
+    init_db(conn)
+    seed_default_rules(conn)
+    conn.close()
+
+
+def _rules_repo(db_path):
+    conn = db_connect(db_path)
+    init_db(conn)
+    return conn, RulesRepository(conn)
 
 
 def _make_handler(repo: DashboardRepository):
@@ -88,6 +104,13 @@ def _make_handler(repo: DashboardRepository):
                 if path.startswith("/guides/"):
                     guide = unquote(path.split("/")[-1])
                     return self._send_html(_render_guide_detail(repo, guide))
+                if path == "/rules":
+                    return self._send_html(_render_rules_list(repo.db_path, query))
+                if path == "/rules/new":
+                    return self._send_html(_render_rule_form(repo.db_path, None, query))
+                if path.startswith("/rules/") and path.endswith("/edit"):
+                    rule_id = int(path.split("/")[2])
+                    return self._send_html(_render_rule_form(repo.db_path, rule_id, query))
             except ValueError:
                 return self._send_text("Ruta invalida", HTTPStatus.BAD_REQUEST)
             except Exception as exc:  # noqa: BLE001
@@ -100,6 +123,17 @@ def _make_handler(repo: DashboardRepository):
             try:
                 if path == "/run/new":
                     return self._handle_run_submit()
+                if path == "/rules/new":
+                    return self._handle_rule_create(repo.db_path)
+                if path.startswith("/rules/") and path.endswith("/edit"):
+                    rule_id = int(path.split("/")[2])
+                    return self._handle_rule_update(repo.db_path, rule_id)
+                if path.startswith("/rules/") and path.endswith("/toggle"):
+                    rule_id = int(path.split("/")[2])
+                    return self._handle_rule_toggle(repo.db_path, rule_id)
+                if path.startswith("/rules/") and path.endswith("/delete"):
+                    rule_id = int(path.split("/")[2])
+                    return self._handle_rule_delete(repo.db_path, rule_id)
             except Exception as exc:  # noqa: BLE001
                 return self._send_text(f"Error interno: {exc}", HTTPStatus.INTERNAL_SERVER_ERROR)
             return self._send_text("No encontrado", HTTPStatus.NOT_FOUND)
@@ -145,6 +179,53 @@ def _make_handler(repo: DashboardRepository):
             self.send_header("Location", f"/run/progress/{token}")
             self.end_headers()
 
+        def _read_form(self) -> dict:
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = self.rfile.read(length).decode("utf-8") if length else ""
+            return parse_qs(payload)
+
+        def _form_val(self, form: dict, key: str, default: str = "") -> str:
+            return (form.get(key, [default]) or [default])[0]
+
+        def _handle_rule_create(self, db_path) -> None:
+            form = self._read_form()
+            conn, rules_repo = _rules_repo(db_path)
+            try:
+                rules_repo.create(_form_to_rule_data(form))
+            finally:
+                conn.close()
+            self._redirect("/rules?saved=1")
+
+        def _handle_rule_update(self, db_path, rule_id: int) -> None:
+            form = self._read_form()
+            conn, rules_repo = _rules_repo(db_path)
+            try:
+                rules_repo.update(rule_id, _form_to_rule_data(form))
+            finally:
+                conn.close()
+            self._redirect("/rules?saved=1")
+
+        def _handle_rule_toggle(self, db_path, rule_id: int) -> None:
+            conn, rules_repo = _rules_repo(db_path)
+            try:
+                rules_repo.toggle(rule_id)
+            finally:
+                conn.close()
+            self._redirect("/rules")
+
+        def _handle_rule_delete(self, db_path, rule_id: int) -> None:
+            conn, rules_repo = _rules_repo(db_path)
+            try:
+                rules_repo.delete(rule_id)
+            finally:
+                conn.close()
+            self._redirect("/rules?deleted=1")
+
+        def _redirect(self, location: str) -> None:
+            self.send_response(HTTPStatus.SEE_OTHER)
+            self.send_header("Location", location)
+            self.end_headers()
+
         def _send_html(self, html: str) -> None:
             encoded = html.encode("utf-8")
             self.send_response(HTTPStatus.OK)
@@ -162,6 +243,152 @@ def _make_handler(repo: DashboardRepository):
             self.wfile.write(encoded)
 
     return Handler
+
+
+def _form_to_rule_data(form: dict) -> dict:
+    fv = lambda k, d="": (form.get(k, [d]) or [d])[0]  # noqa: E731
+    return {
+        "priority": fv("priority", "100"),
+        "enabled": bool(fv("enabled")),
+        "name": fv("name"),
+        "match_estado": fv("match_estado"),
+        "match_estado_contains": fv("match_estado_contains"),
+        "match_novelty_contains": fv("match_novelty_contains"),
+        "min_days": fv("min_days"),
+        "estado_propuesto": fv("estado_propuesto"),
+        "motivo": fv("motivo"),
+        "requiere_accion": fv("requiere_accion"),
+        "review_needed": bool(fv("review_needed")),
+        "updated_by": "operadora",
+    }
+
+
+def _render_rules_list(db_path, query: dict[str, list[str]]) -> str:
+    conn, rules_repo = _rules_repo(db_path)
+    try:
+        rules = rules_repo.list_all()
+    finally:
+        conn.close()
+
+    body = hero(
+        "Reglas de decision",
+        "Determinan como se interpreta el estado de Effi para cada guia. Se evaluan en orden de prioridad.",
+        button("/rules/new", "Nueva regla") + button("/", "Volver al resumen", "ghost"),
+    )
+    body += alert(
+        "Las reglas se evaluan en orden de prioridad ascendente. La primera que coincide determina el resultado.",
+        "info",
+    )
+    if _q(query, "saved"):
+        body += alert("Regla guardada correctamente.", "ok")
+    if _q(query, "deleted"):
+        body += alert("Regla eliminada.", "ok")
+
+    body += table(
+        ["Prio", "Estado", "Nombre", "Estado Effi (exacto)", "Estado Effi (contiene)", "Novedad (contiene)", "Dias min.", "Estado propuesto", "Acciones"],
+        [
+            [
+                str(rule["priority"]),
+                rule_enabled_pill(bool(rule["enabled"])),
+                _e(rule["name"]),
+                _e(rule["match_estado"] or ""),
+                _e(rule["match_estado_contains"] or ""),
+                _e(rule["match_novelty_contains"] or ""),
+                str(rule["min_days"]) if rule["min_days"] is not None else "",
+                _e(rule["estado_propuesto"] or "(revision manual)"),
+                (
+                    f'<a class="button ghost" style="padding:4px 10px;font-size:.78rem" href="/rules/{rule["id"]}/edit">Editar</a>'
+                    f'<form method="post" action="/rules/{rule["id"]}/toggle" style="display:inline">'
+                    f'<button style="padding:4px 10px;font-size:.78rem;background:{"#16a34a" if not rule["enabled"] else "#64748b"}">'
+                    f'{"Activar" if not rule["enabled"] else "Desactivar"}</button></form>'
+                    f'<form method="post" action="/rules/{rule["id"]}/delete" style="display:inline" '
+                    f'onsubmit="return confirm(\'Eliminar esta regla?\');">'
+                    f'<button style="padding:4px 10px;font-size:.78rem;background:#dc2626">Eliminar</button></form>'
+                ),
+            ]
+            for rule in rules
+        ],
+    )
+    return layout("Reglas de decision", body)
+
+
+def _render_rule_form(db_path, rule_id: int | None, query: dict[str, list[str]]) -> str:
+    conn, rules_repo = _rules_repo(db_path)
+    try:
+        rule = rules_repo.get(rule_id) if rule_id is not None else None
+    finally:
+        conn.close()
+
+    is_edit = rule is not None
+    title = f"Editar regla #{rule_id}" if is_edit else "Nueva regla"
+
+    def val(field: str, default: str = "") -> str:
+        if rule and rule.get(field) is not None:
+            return _e(str(rule[field]))
+        return _e(default)
+
+    checked_enabled = 'checked' if (rule is None or rule.get("enabled", 1)) else ''
+    checked_review = 'checked' if rule and rule.get("review_needed") else ''
+
+    action = f"/rules/{rule_id}/edit" if is_edit else "/rules/new"
+    body = hero(
+        title,
+        "Configura las condiciones y la accion de esta regla. Los campos de coincidencia usan texto normalizado (minusculas).",
+        button("/rules", "Volver a reglas", "ghost"),
+    )
+    body += alert(
+        "Tip: usa solo los campos de coincidencia que necesites. Los campos vacios se ignoran. "
+        "El campo 'Dias min.' activa la regla solo si el estado lleva al menos esos dias sin cambio.",
+        "info",
+    )
+    body += panel(f"""
+        <form class="stack" method="post" action="{action}">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <label>Prioridad (menor = primero)
+              <input type="number" name="priority" value="{val('priority', '100')}" min="1" max="9999" required>
+            </label>
+            <label>Nombre descriptivo
+              <input type="text" name="name" value="{val('name')}" required>
+            </label>
+          </div>
+          <label style="flex-direction:row;align-items:center;gap:10px;font-weight:600">
+            <input type="checkbox" name="enabled" value="1" {checked_enabled}> Habilitada
+          </label>
+          <div class="sep"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+            <label>Estado Effi exacto
+              <input type="text" name="match_estado" value="{val('match_estado')}" placeholder="ej: entregado">
+            </label>
+            <label>Estado Effi contiene
+              <input type="text" name="match_estado_contains" value="{val('match_estado_contains')}" placeholder="ej: devoluci">
+            </label>
+            <label>Novedad contiene
+              <input type="text" name="match_novelty_contains" value="{val('match_novelty_contains')}" placeholder="ej: nadie en casa">
+            </label>
+          </div>
+          <label style="max-width:200px">Dias minimos sin cambio
+            <input type="number" name="min_days" value="{val('min_days')}" min="1" placeholder="dejar vacio para ignorar">
+          </label>
+          <div class="sep"></div>
+          <label>Estado propuesto en Notion (dejar vacio = revision manual)
+            <input type="text" name="estado_propuesto" value="{val('estado_propuesto')}" placeholder="ej: ENTREGADA">
+          </label>
+          <label>Motivo (usa {{days}} para insertar los dias calculados)
+            <input type="text" name="motivo" value="{val('motivo')}" required placeholder="ej: Effi reporta entrega exitosa.">
+          </label>
+          <label>Accion requerida
+            <input type="text" name="requiere_accion" value="{val('requiere_accion')}" required placeholder="ej: Sin accion">
+          </label>
+          <label style="flex-direction:row;align-items:center;gap:10px;font-weight:600">
+            <input type="checkbox" name="review_needed" value="1" {checked_review}> Marcar como revision manual
+          </label>
+          <div class="toolbar">
+            <button type="submit">Guardar regla</button>
+            <a class="button ghost" href="/rules">Cancelar</a>
+          </div>
+        </form>
+    """)
+    return layout(title, body)
 
 
 def _render_home(repo: DashboardRepository, query: dict[str, list[str]]) -> str:

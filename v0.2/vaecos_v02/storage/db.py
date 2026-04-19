@@ -5,6 +5,23 @@ from pathlib import Path
 
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    priority INTEGER NOT NULL DEFAULT 100,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    name TEXT NOT NULL,
+    match_estado TEXT,
+    match_estado_contains TEXT,
+    match_novelty_contains TEXT,
+    min_days INTEGER,
+    estado_propuesto TEXT,
+    motivo TEXT NOT NULL,
+    requiere_accion TEXT NOT NULL,
+    review_needed INTEGER NOT NULL DEFAULT 0,
+    updated_by TEXT NOT NULL DEFAULT 'sistema',
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at TEXT NOT NULL,
@@ -52,6 +69,48 @@ CREATE TABLE IF NOT EXISTS tracking_novelty_events (
     FOREIGN KEY(run_id) REFERENCES runs(id)
 );
 """
+
+
+SEED_RULES = [
+    {"priority": 10,  "name": "Paquete en agencia",                      "match_estado": None,                 "match_estado_contains": None,      "match_novelty_contains": "paquete en agencia",                     "min_days": None, "estado_propuesto": "Por recoger (INFORMADO)", "motivo": "Novedad de Effi indica paquete en agencia.",                                      "requiere_accion": "Avisar al cliente que vaya a recoger",  "review_needed": 0},
+    {"priority": 20,  "name": "Anomalia \u2013 no quiso recibir",          "match_estado": "anomalia",            "match_estado_contains": None,      "match_novelty_contains": "cliente no quiso recibir",               "min_days": None, "estado_propuesto": "En novedad",              "motivo": "Anomalia con novedad coincidente: cliente no quiso recibir.",                     "requiere_accion": "Hablar con cliente",                    "review_needed": 0},
+    {"priority": 21,  "name": "Anomalia \u2013 no quizo recibir",          "match_estado": "anomalia",            "match_estado_contains": None,      "match_novelty_contains": "cliente no quizo recibir",               "min_days": None, "estado_propuesto": "En novedad",              "motivo": "Anomalia con novedad coincidente: cliente no quizo recibir.",                     "requiere_accion": "Hablar con cliente",                    "review_needed": 0},
+    {"priority": 22,  "name": "Anomalia \u2013 nadie en casa",             "match_estado": "anomalia",            "match_estado_contains": None,      "match_novelty_contains": "nadie en casa",                          "min_days": None, "estado_propuesto": "En novedad",              "motivo": "Anomalia con novedad coincidente: nadie en casa.",                                "requiere_accion": "Hablar con cliente",                    "review_needed": 0},
+    {"priority": 23,  "name": "Anomalia \u2013 direccion no corresponde",  "match_estado": "anomalia",            "match_estado_contains": None,      "match_novelty_contains": "direccion no corresponde",               "min_days": None, "estado_propuesto": "En novedad",              "motivo": "Anomalia con novedad coincidente: direccion no corresponde.",                     "requiere_accion": "Hablar con cliente",                    "review_needed": 0},
+    {"priority": 24,  "name": "Anomalia \u2013 direcci\u00f3n no corresponde", "match_estado": "anomalia",        "match_estado_contains": None,      "match_novelty_contains": "direcci\u00f3n no corresponde",          "min_days": None, "estado_propuesto": "En novedad",              "motivo": "Anomalia con novedad coincidente: direcci\u00f3n no corresponde.",                "requiere_accion": "Hablar con cliente",                    "review_needed": 0},
+    {"priority": 25,  "name": "Anomalia \u2013 no llego al punto",         "match_estado": "anomalia",            "match_estado_contains": None,      "match_novelty_contains": "cliente no llego al punto de encuentro", "min_days": None, "estado_propuesto": "En novedad",              "motivo": "Anomalia con novedad coincidente: cliente no llego al punto de encuentro.",       "requiere_accion": "Hablar con cliente",                    "review_needed": 0},
+    {"priority": 26,  "name": "Anomalia \u2013 no lleg\u00f3 al punto",    "match_estado": "anomalia",            "match_estado_contains": None,      "match_novelty_contains": "cliente no lleg\u00f3 al punto de encuentro", "min_days": None, "estado_propuesto": "En novedad",           "motivo": "Anomalia con novedad coincidente: cliente no lleg\u00f3 al punto de encuentro.",  "requiere_accion": "Hablar con cliente",                    "review_needed": 0},
+    {"priority": 30,  "name": "Devoluci\u00f3n",                          "match_estado": None,                 "match_estado_contains": "devoluci", "match_novelty_contains": None,                                     "min_days": None, "estado_propuesto": "En Devoluci\u00f3n",     "motivo": "Effi reporta devoluci\u00f3n.",                                                    "requiere_accion": "Sin accion",                            "review_needed": 0},
+    {"priority": 40,  "name": "Entregado",                                "match_estado": "entregado",           "match_estado_contains": None,      "match_novelty_contains": None,                                     "min_days": None, "estado_propuesto": "ENTREGADA",               "motivo": "Effi reporta entrega exitosa.",                                                   "requiere_accion": "Sin accion",                            "review_needed": 0},
+    {"priority": 50,  "name": "Ruta entrega final \u2013 sin movimiento", "match_estado": "ruta entrega final", "match_estado_contains": None,      "match_novelty_contains": None,                                     "min_days": 2,    "estado_propuesto": "Sin movimiento",          "motivo": "RUTA ENTREGA FINAL con {days} dias sin cambio.",                                  "requiere_accion": "Gestionar con encargado",               "review_needed": 0},
+    {"priority": 51,  "name": "Ruta entrega final \u2013 en ruta",        "match_estado": "ruta entrega final", "match_estado_contains": None,      "match_novelty_contains": None,                                     "min_days": None, "estado_propuesto": "En ruta de entrega",      "motivo": "RUTA ENTREGA FINAL activo (menos de 1 dia sin cambio o sin fecha).",              "requiere_accion": "Monitorear",                            "review_needed": 0},
+    {"priority": 60,  "name": "En ruta de entrega \u2013 sin movimiento", "match_estado": "en ruta de entrega", "match_estado_contains": None,      "match_novelty_contains": None,                                     "min_days": 2,    "estado_propuesto": "Sin movimiento",          "motivo": "EN RUTA DE ENTREGA con {days} dias sin cambio.",                                  "requiere_accion": "Gestionar con encargado",               "review_needed": 0},
+    {"priority": 70,  "name": "Almacenado en bodega \u2013 sin movimiento", "match_estado": "almacenado en bodega", "match_estado_contains": None, "match_novelty_contains": None,                                     "min_days": 2,    "estado_propuesto": "Sin movimiento",          "motivo": "ALMACENADO EN BODEGA con {days} dias sin cambio.",                                "requiere_accion": "Gestionar con encargado",               "review_needed": 0},
+    {"priority": 80,  "name": "Sin recolectar \u2013 sin movimiento",     "match_estado": "sin recolectar",     "match_estado_contains": None,      "match_novelty_contains": None,                                     "min_days": 2,    "estado_propuesto": "Sin movimiento",          "motivo": "Sin Recolectar con {days} dias sin cambio.",                                      "requiere_accion": "Gestionar con encargado",               "review_needed": 0},
+]
+
+
+def seed_default_rules(connection: sqlite3.Connection) -> None:
+    count = connection.execute("SELECT COUNT(*) FROM rules").fetchone()[0]
+    if count > 0:
+        return
+    now = __import__("datetime").datetime.now().isoformat(timespec="seconds")
+    for rule in SEED_RULES:
+        connection.execute(
+            """
+            INSERT INTO rules (priority, enabled, name, match_estado, match_estado_contains,
+                match_novelty_contains, min_days, estado_propuesto, motivo, requiere_accion,
+                review_needed, updated_by, updated_at)
+            VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sistema', ?)
+            """,
+            (
+                rule["priority"], rule["name"], rule["match_estado"],
+                rule["match_estado_contains"], rule["match_novelty_contains"],
+                rule["min_days"], rule["estado_propuesto"], rule["motivo"],
+                rule["requiere_accion"], rule["review_needed"], now,
+            ),
+        )
+    connection.commit()
 
 
 def connect(db_path: Path) -> sqlite3.Connection:

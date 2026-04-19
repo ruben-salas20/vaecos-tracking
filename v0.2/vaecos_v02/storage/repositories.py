@@ -4,6 +4,7 @@ import sqlite3
 from datetime import datetime
 
 from vaecos_v02.core.models import EffiTrackingData, ProcessingResult
+from vaecos_v02.storage.db import seed_default_rules
 
 
 class RunRepository:
@@ -200,3 +201,97 @@ class RunRepository:
             (guia, limit),
         )
         return list(cursor.fetchall())
+
+
+class RulesRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self.connection = connection
+
+    def seed_if_empty(self) -> None:
+        seed_default_rules(self.connection)
+
+    def list_all(self) -> list[dict]:
+        cursor = self.connection.execute(
+            "SELECT * FROM rules ORDER BY priority ASC, id ASC"
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def list_enabled(self) -> list[dict]:
+        cursor = self.connection.execute(
+            "SELECT * FROM rules WHERE enabled = 1 ORDER BY priority ASC, id ASC"
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get(self, rule_id: int) -> dict | None:
+        cursor = self.connection.execute("SELECT * FROM rules WHERE id = ?", (rule_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def create(self, data: dict) -> int:
+        now = datetime.now().isoformat(timespec="seconds")
+        cursor = self.connection.execute(
+            """
+            INSERT INTO rules (priority, enabled, name, match_estado, match_estado_contains,
+                match_novelty_contains, min_days, estado_propuesto, motivo, requiere_accion,
+                review_needed, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(data["priority"]),
+                1 if data.get("enabled", True) else 0,
+                str(data["name"]),
+                data.get("match_estado") or None,
+                data.get("match_estado_contains") or None,
+                data.get("match_novelty_contains") or None,
+                int(data["min_days"]) if data.get("min_days") not in (None, "") else None,
+                data.get("estado_propuesto") or None,
+                str(data["motivo"]),
+                str(data["requiere_accion"]),
+                1 if data.get("review_needed") else 0,
+                str(data.get("updated_by") or "operadora"),
+                now,
+            ),
+        )
+        self.connection.commit()
+        return int(cursor.lastrowid)
+
+    def update(self, rule_id: int, data: dict) -> None:
+        now = datetime.now().isoformat(timespec="seconds")
+        self.connection.execute(
+            """
+            UPDATE rules SET priority=?, enabled=?, name=?, match_estado=?,
+                match_estado_contains=?, match_novelty_contains=?, min_days=?,
+                estado_propuesto=?, motivo=?, requiere_accion=?, review_needed=?,
+                updated_by=?, updated_at=?
+            WHERE id=?
+            """,
+            (
+                int(data["priority"]),
+                1 if data.get("enabled", True) else 0,
+                str(data["name"]),
+                data.get("match_estado") or None,
+                data.get("match_estado_contains") or None,
+                data.get("match_novelty_contains") or None,
+                int(data["min_days"]) if data.get("min_days") not in (None, "") else None,
+                data.get("estado_propuesto") or None,
+                str(data["motivo"]),
+                str(data["requiere_accion"]),
+                1 if data.get("review_needed") else 0,
+                str(data.get("updated_by") or "operadora"),
+                now,
+                rule_id,
+            ),
+        )
+        self.connection.commit()
+
+    def toggle(self, rule_id: int) -> None:
+        self.connection.execute(
+            "UPDATE rules SET enabled = CASE WHEN enabled = 1 THEN 0 ELSE 1 END, "
+            "updated_at = ? WHERE id = ?",
+            (datetime.now().isoformat(timespec="seconds"), rule_id),
+        )
+        self.connection.commit()
+
+    def delete(self, rule_id: int) -> None:
+        self.connection.execute("DELETE FROM rules WHERE id = ?", (rule_id,))
+        self.connection.commit()
