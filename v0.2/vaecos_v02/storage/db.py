@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS rules (
     match_estado TEXT,
     match_estado_contains TEXT,
     match_novelty_contains TEXT,
+    match_notion_estado TEXT,
+    match_notion_estado_contains TEXT,
     min_days INTEGER,
     estado_propuesto TEXT,
     motivo TEXT NOT NULL,
@@ -123,6 +125,20 @@ def connect(db_path: Path) -> sqlite3.Connection:
 
 def init_db(connection: sqlite3.Connection) -> None:
     connection.executescript(SCHEMA)
+    connection.commit()
+    _migrate_rules_columns(connection)
+
+
+def _migrate_rules_columns(connection: sqlite3.Connection) -> None:
+    """Add columns introduced after initial schema (idempotent)."""
+    new_cols = [
+        ("match_notion_estado",          "TEXT"),
+        ("match_notion_estado_contains", "TEXT"),
+    ]
+    existing = {row[1] for row in connection.execute("PRAGMA table_info(rules)").fetchall()}
+    for col, col_type in new_cols:
+        if col not in existing:
+            connection.execute(f"ALTER TABLE rules ADD COLUMN {col} {col_type}")
     connection.commit()
 
 

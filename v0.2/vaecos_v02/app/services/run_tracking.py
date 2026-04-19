@@ -144,7 +144,7 @@ def execute_tracking(
                     actualizacion_notion="No actualizado",
                 )
             else:
-                decision = decide_status_with_db(tracking, run_context.today, active_rules)
+                decision = decide_status_with_db(tracking, run_context.today, active_rules, record.estado_novedad)
                 if decision.review_needed:
                     resultado = "manual_review"
                 elif decision.estado_propuesto == record.estado_novedad:

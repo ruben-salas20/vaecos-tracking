@@ -254,6 +254,8 @@ def _form_to_rule_data(form: dict) -> dict:
         "match_estado": fv("match_estado"),
         "match_estado_contains": fv("match_estado_contains"),
         "match_novelty_contains": fv("match_novelty_contains"),
+        "match_notion_estado": fv("match_notion_estado"),
+        "match_notion_estado_contains": fv("match_notion_estado_contains"),
         "min_days": fv("min_days"),
         "estado_propuesto": fv("estado_propuesto"),
         "motivo": fv("motivo"),
@@ -285,7 +287,7 @@ def _render_rules_list(db_path, query: dict[str, list[str]]) -> str:
         body += alert("Regla eliminada.", "ok")
 
     body += table(
-        ["Prio", "Estado", "Nombre", "Estado Effi (exacto)", "Estado Effi (contiene)", "Novedad (contiene)", "Dias min.", "Estado propuesto", "Acciones"],
+        ["Prio", "Estado", "Nombre", "Estado Effi (exacto)", "Estado Effi (contiene)", "Novedad (contiene)", "Estado Notion (exacto)", "Estado Notion (contiene)", "Dias min.", "Estado propuesto", "Acciones"],
         [
             [
                 str(rule["priority"]),
@@ -294,6 +296,8 @@ def _render_rules_list(db_path, query: dict[str, list[str]]) -> str:
                 _e(rule["match_estado"] or ""),
                 _e(rule["match_estado_contains"] or ""),
                 _e(rule["match_novelty_contains"] or ""),
+                _e(rule.get("match_notion_estado") or ""),
+                _e(rule.get("match_notion_estado_contains") or ""),
                 str(rule["min_days"]) if rule["min_days"] is not None else "",
                 _e(rule["estado_propuesto"] or "(revision manual)"),
                 (
@@ -364,6 +368,14 @@ def _render_rule_form(db_path, rule_id: int | None, query: dict[str, list[str]])
             </label>
             <label>Novedad contiene
               <input type="text" name="match_novelty_contains" value="{val('match_novelty_contains')}" placeholder="ej: nadie en casa">
+            </label>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <label>Estado Notion actual exacto
+              <input type="text" name="match_notion_estado" value="{val('match_notion_estado')}" placeholder="ej: En ruta de entrega">
+            </label>
+            <label>Estado Notion actual contiene
+              <input type="text" name="match_notion_estado_contains" value="{val('match_notion_estado_contains')}" placeholder="ej: novedad">
             </label>
           </div>
           <label style="max-width:200px">Dias minimos sin cambio

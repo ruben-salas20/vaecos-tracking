@@ -18,18 +18,25 @@ ANOMALIA_PATTERNS = [
 
 
 def decide_status_with_db(
-    tracking: EffiTrackingData, today: date, rules: list[dict]
+    tracking: EffiTrackingData,
+    today: date,
+    rules: list[dict],
+    notion_estado: str | None = None,
 ) -> RuleDecision:
     """Use DB rules when available, otherwise fall back to hardcoded."""
     if rules:
-        return _decide_from_rules(tracking, today, rules)
+        return _decide_from_rules(tracking, today, rules, notion_estado)
     return decide_status(tracking, today)
 
 
 def _decide_from_rules(
-    tracking: EffiTrackingData, today: date, rules: list[dict]
+    tracking: EffiTrackingData,
+    today: date,
+    rules: list[dict],
+    notion_estado: str | None,
 ) -> RuleDecision:
     estado_actual = normalize_for_match(tracking.estado_actual or "")
+    notion_estado_norm = normalize_for_match(notion_estado or "")
     latest_status_date = _latest_status_date(tracking)
     days = _days_since(latest_status_date, today)
     latest_novelty_text = " ".join(
@@ -38,7 +45,7 @@ def _decide_from_rules(
     )
 
     for rule in rules:
-        if not _rule_matches(rule, estado_actual, latest_novelty_text, days):
+        if not _rule_matches(rule, estado_actual, latest_novelty_text, days, notion_estado_norm):
             continue
         motivo = str(rule["motivo"])
         if days is not None:
@@ -66,13 +73,21 @@ def _decide_from_rules(
 
 
 def _rule_matches(
-    rule: dict, estado_actual: str, latest_novelty_text: str, days: int | None
+    rule: dict,
+    estado_actual: str,
+    latest_novelty_text: str,
+    days: int | None,
+    notion_estado_norm: str,
 ) -> bool:
     if rule["match_estado"] and rule["match_estado"] != estado_actual:
         return False
     if rule["match_estado_contains"] and rule["match_estado_contains"] not in estado_actual:
         return False
     if rule["match_novelty_contains"] and rule["match_novelty_contains"] not in latest_novelty_text:
+        return False
+    if rule.get("match_notion_estado") and rule["match_notion_estado"] != notion_estado_norm:
+        return False
+    if rule.get("match_notion_estado_contains") and rule["match_notion_estado_contains"] not in notion_estado_norm:
         return False
     if rule["min_days"] is not None:
         if days is None or days < int(rule["min_days"]):

@@ -232,9 +232,10 @@ class RulesRepository:
         cursor = self.connection.execute(
             """
             INSERT INTO rules (priority, enabled, name, match_estado, match_estado_contains,
-                match_novelty_contains, min_days, estado_propuesto, motivo, requiere_accion,
+                match_novelty_contains, match_notion_estado, match_notion_estado_contains,
+                min_days, estado_propuesto, motivo, requiere_accion,
                 review_needed, updated_by, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 int(data["priority"]),
@@ -243,6 +244,8 @@ class RulesRepository:
                 data.get("match_estado") or None,
                 data.get("match_estado_contains") or None,
                 data.get("match_novelty_contains") or None,
+                data.get("match_notion_estado") or None,
+                data.get("match_notion_estado_contains") or None,
                 int(data["min_days"]) if data.get("min_days") not in (None, "") else None,
                 data.get("estado_propuesto") or None,
                 str(data["motivo"]),
@@ -260,9 +263,10 @@ class RulesRepository:
         self.connection.execute(
             """
             UPDATE rules SET priority=?, enabled=?, name=?, match_estado=?,
-                match_estado_contains=?, match_novelty_contains=?, min_days=?,
-                estado_propuesto=?, motivo=?, requiere_accion=?, review_needed=?,
-                updated_by=?, updated_at=?
+                match_estado_contains=?, match_novelty_contains=?,
+                match_notion_estado=?, match_notion_estado_contains=?,
+                min_days=?, estado_propuesto=?, motivo=?, requiere_accion=?,
+                review_needed=?, updated_by=?, updated_at=?
             WHERE id=?
             """,
             (
@@ -272,6 +276,8 @@ class RulesRepository:
                 data.get("match_estado") or None,
                 data.get("match_estado_contains") or None,
                 data.get("match_novelty_contains") or None,
+                data.get("match_notion_estado") or None,
+                data.get("match_notion_estado_contains") or None,
                 int(data["min_days"]) if data.get("min_days") not in (None, "") else None,
                 data.get("estado_propuesto") or None,
                 str(data["motivo"]),
