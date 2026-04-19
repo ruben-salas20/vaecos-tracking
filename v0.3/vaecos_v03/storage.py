@@ -9,6 +9,7 @@ class DashboardRepository:
         self.db_path = db_path
 
     def _connect(self) -> sqlite3.Connection:
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(str(self.db_path))
         connection.row_factory = sqlite3.Row
         return connection

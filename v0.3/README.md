@@ -61,3 +61,16 @@ python v0.3/server.py --check
 
 - `v0.2` sigue siendo quien ejecuta corridas y escribe a SQLite
 - `v0.3` usa la logica de `v0.2` para ejecutar corridas desde web y luego presenta resultados leyendo SQLite
+
+## Primer arranque
+
+`v0.3` ya no requiere que la SQLite exista previamente.
+
+En el primer arranque:
+
+- crea automaticamente la carpeta `v0.2/data/` si no existe
+- crea la base `vaecos_tracking.db` si no existe
+- inicializa el esquema SQLite
+- siembra las reglas default
+
+Por eso `iniciar.bat` y `python v0.3/server.py` deben funcionar incluso en una instalacion nueva.

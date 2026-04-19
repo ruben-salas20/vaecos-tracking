@@ -82,18 +82,14 @@ def main() -> int:
         host=args.host or settings.host,
         port=args.port or settings.port,
     )
-    if settings.sqlite_db_path.exists():
-        _migration_conn = v02_connect(settings.sqlite_db_path)
-        try:
-            v02_init_db(_migration_conn)
-            RulesRepository(_migration_conn).seed_if_empty(DEFAULT_RULES)
-        finally:
-            _migration_conn.close()
+    db_created = _ensure_db_ready(settings.sqlite_db_path)
 
     repo = DashboardRepository(settings.sqlite_db_path)
 
     latest = repo.latest_run()
     if args.check:
+        if db_created:
+            print(f"SQLite inicializada por primera vez: {settings.sqlite_db_path}")
         if latest is None:
             print(f"SQLite accesible pero sin corridas: {settings.sqlite_db_path}")
             return 0
@@ -102,6 +98,8 @@ def main() -> int:
         return 0
 
     server = ThreadingHTTPServer((settings.host, settings.port), _make_handler(repo))
+    if db_created:
+        print(f"SQLite inicializada: {settings.sqlite_db_path}")
     print(f"Aplicacion v0.3 en http://{settings.host}:{settings.port}")
     try:
         server.serve_forever()
@@ -110,6 +108,17 @@ def main() -> int:
     finally:
         server.server_close()
     return 0
+
+
+def _ensure_db_ready(db_path: Path) -> bool:
+    was_missing = not db_path.exists()
+    connection = v02_connect(db_path)
+    try:
+        v02_init_db(connection)
+        RulesRepository(connection).seed_if_empty(DEFAULT_RULES)
+    finally:
+        connection.close()
+    return was_missing
 
 
 def _make_handler(repo: DashboardRepository):

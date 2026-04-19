@@ -1,27 +1,11 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS rules (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    priority INTEGER NOT NULL DEFAULT 100,
-    enabled INTEGER NOT NULL DEFAULT 1,
-    name TEXT NOT NULL,
-    match_estado TEXT,
-    match_estado_contains TEXT,
-    match_novelty_contains TEXT,
-    min_days INTEGER,
-    estado_propuesto TEXT,
-    motivo TEXT NOT NULL,
-    requiere_accion TEXT NOT NULL,
-    review_needed INTEGER NOT NULL DEFAULT 0,
-    updated_by TEXT NOT NULL DEFAULT 'sistema',
-    updated_at TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at TEXT NOT NULL,
@@ -169,10 +153,87 @@ def init_db(connection: sqlite3.Connection) -> None:
 
 def _apply_migrations(connection: sqlite3.Connection) -> None:
     """Idempotent ALTERs for schemas created before new columns existed."""
+    _migrate_legacy_rules_table(connection)
+
     if not _column_exists(connection, "run_results", "carrier"):
         connection.execute(
             "ALTER TABLE run_results ADD COLUMN carrier TEXT NOT NULL DEFAULT 'effi'"
         )
+
+
+def _migrate_legacy_rules_table(connection: sqlite3.Connection) -> None:
+    if not _table_exists(connection, "rules"):
+        return
+    if _column_exists(connection, "rules", "carrier"):
+        return
+
+    connection.execute("ALTER TABLE rules RENAME TO rules_legacy")
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            carrier TEXT NOT NULL DEFAULT 'effi',
+            name TEXT NOT NULL,
+            priority INTEGER NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            estado_match_kind TEXT NOT NULL DEFAULT 'any'
+                CHECK (estado_match_kind IN ('any', 'equals_one_of', 'contains_any_of')),
+            estado_match_values TEXT NOT NULL DEFAULT '[]',
+            novelty_match_kind TEXT NOT NULL DEFAULT 'any'
+                CHECK (novelty_match_kind IN ('any', 'contains_any_of')),
+            novelty_match_values TEXT NOT NULL DEFAULT '[]',
+            days_comparator TEXT
+                CHECK (days_comparator IS NULL OR days_comparator IN ('gt', 'gte', 'lt', 'lte', 'no_date')),
+            days_threshold INTEGER,
+            estado_propuesto TEXT,
+            motivo_template TEXT NOT NULL,
+            requiere_accion TEXT NOT NULL DEFAULT '',
+            review_needed INTEGER NOT NULL DEFAULT 0,
+            notes TEXT,
+            updated_at TEXT NOT NULL,
+            updated_by TEXT NOT NULL DEFAULT 'operadora'
+        )
+        """
+    )
+
+    legacy_rows = connection.execute("SELECT * FROM rules_legacy ORDER BY id ASC").fetchall()
+    for row in legacy_rows:
+        estado_values = [row["match_estado"]] if row["match_estado"] else []
+        novelty_values = [row["match_novelty_contains"]] if row["match_novelty_contains"] else []
+        connection.execute(
+            """
+            INSERT INTO rules (
+                id, carrier, name, priority, enabled,
+                estado_match_kind, estado_match_values,
+                novelty_match_kind, novelty_match_values,
+                days_comparator, days_threshold,
+                estado_propuesto, motivo_template, requiere_accion,
+                review_needed, notes, updated_at, updated_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row["id"],
+                "effi",
+                row["name"],
+                row["priority"],
+                row["enabled"],
+                "equals_one_of" if estado_values else "any",
+                json.dumps(estado_values, ensure_ascii=False),
+                "contains_any_of" if novelty_values else "any",
+                json.dumps(novelty_values, ensure_ascii=False),
+                "gte" if row["min_days"] is not None else None,
+                row["min_days"],
+                row["estado_propuesto"],
+                row["motivo"],
+                row["requiere_accion"],
+                row["review_needed"],
+                "",
+                row["updated_at"],
+                row["updated_by"],
+            ),
+        )
+
+    connection.execute("DROP TABLE rules_legacy")
 
 
 def _column_exists(
@@ -180,6 +241,14 @@ def _column_exists(
 ) -> bool:
     rows = connection.execute(f"PRAGMA table_info({table})").fetchall()
     return any(row["name"] == column for row in rows)
+
+
+def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table,),
+    ).fetchone()
+    return row is not None
 
 
 def clear_history(connection: sqlite3.Connection) -> None:

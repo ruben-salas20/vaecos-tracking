@@ -113,6 +113,7 @@ python "v0.3/server.py" --check
 
 - `v0.2` procesa todas las guias activas por defecto si no pasas `--guides`.
 - `--apply` actualiza propiedades en Notion; el historial dentro de la pagina sigue siendo manual.
+- `v0.3` crea automaticamente la carpeta `v0.2/data/` y la SQLite en el primer arranque si no existen todavia.
 - Antes de cambiar una regla, usar `/rules/preview?guia=...` contra una guia real para confirmar el efecto.
 - Si Effi cambia su HTML, usar `--save-raw-html` para depurar antes de tocar el parser.
 - La web es local single-user hoy. Diseñada para poder mover a VPS con auth mas adelante.
