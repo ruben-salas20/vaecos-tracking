@@ -249,11 +249,20 @@ Pendientes opcionales pero útiles:
 4. Conservar config/data/reportes.
 5. Dejar rollback básico.
 
+### Fase C2: reglas editables desde UI — COMPLETADO
+1. Tabla `rules` en SQLite con 15 reglas semilla (migradas desde `rules.py`).
+2. `RulesRepository` con CRUD completo + seeding automático.
+3. Motor `decide_status_with_db` en `rules.py`; fallback a hardcoded si DB vacía.
+4. `run_tracking.py` carga reglas desde DB antes de cada corrida.
+5. Rutas `/rules`, `/rules/new`, `/rules/<id>/edit`, `/rules/<id>/toggle`, `/rules/<id>/delete` en v0.3.
+6. UI con tabla de reglas, formulario edición, activar/desactivar, eliminar.
+7. Sidebar actualizado con sección "Configuración".
+
 ### Fase 4: opcional futura
 1. Dashboard más completo.
 2. Más analítica.
 3. Más carriers.
-4. Reglas más configurables.
+4. Vista "probar regla contra guía X" antes de activar (pendiente de Fase C2).
 
 ## Recomendación para el siguiente agente
 

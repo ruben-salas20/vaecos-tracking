@@ -6,12 +6,12 @@ from pathlib import Path
 
 from vaecos_v02.app.config import Settings
 from vaecos_v02.core.models import EffiTrackingData, ProcessingResult, RunContext
-from vaecos_v02.core.rules import decide_status
+from vaecos_v02.core.rules import decide_status_with_db
 from vaecos_v02.providers.effi_provider import EffiProvider
 from vaecos_v02.providers.notion_provider import NotionProvider
 from vaecos_v02.reporting.report_builder import write_reports
 from vaecos_v02.storage.db import clear_history, connect, init_db
-from vaecos_v02.storage.repositories import RunRepository
+from vaecos_v02.storage.repositories import RunRepository, RulesRepository
 
 _MAX_EFFI_WORKERS = 8
 
@@ -63,6 +63,9 @@ def execute_tracking(
 
     connection = connect(settings.sqlite_db_path)
     init_db(connection)
+    rules_repo = RulesRepository(connection)
+    rules_repo.seed_if_empty()
+    active_rules = rules_repo.list_enabled()
     repository = RunRepository(connection)
     run_id = repository.create_run(started_at, dry_run)
 
@@ -141,7 +144,7 @@ def execute_tracking(
                     actualizacion_notion="No actualizado",
                 )
             else:
-                decision = decide_status(tracking, run_context.today)
+                decision = decide_status_with_db(tracking, run_context.today, active_rules)
                 if decision.review_needed:
                     resultado = "manual_review"
                 elif decision.estado_propuesto == record.estado_novedad:

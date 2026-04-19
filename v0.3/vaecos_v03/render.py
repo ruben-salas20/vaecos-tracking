@@ -239,6 +239,12 @@ def layout(title: str, body: str) -> str:
             <a href="/run/new">Nueva corrida</a>
           </nav>
         </div>
+        <div class="nav-group">
+          <div class="nav-label">Configuracion</div>
+          <nav class="nav">
+            <a href="/rules">Reglas de decision</a>
+          </nav>
+        </div>
       </div>
     </aside>
     <main class="main">
@@ -253,6 +259,7 @@ def layout(title: str, body: str) -> str:
       if (href === '/')          {{ active = (path === '/'); }}
       else if (href === '/runs') {{ active = (path === '/runs' || path.startsWith('/runs/')); }}
       else if (href === '/run/new') {{ active = path.startsWith('/run/'); }}
+      else if (href === '/rules') {{ active = (path === '/rules' || path.startsWith('/rules/')); }}
       else                       {{ active = (path === href); }}
       if (active) a.classList.add('nav-active');
     }});
@@ -339,3 +346,9 @@ def mode_badge(mode: str) -> str:
     if mode == "apply":
         return '<span class="pill pill-apply">apply</span>'
     return '<span class="pill pill-dry">dry-run</span>'
+
+
+def rule_enabled_pill(enabled: bool) -> str:
+    if enabled:
+        return '<span class="pill pill-apply">activa</span>'
+    return '<span class="pill pill-unchanged">inactiva</span>'
