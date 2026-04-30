@@ -11,6 +11,9 @@ DEFAULT_EXCLUDED_STATUSES = {
     "Indemnización",
     "Solicitud devolución",
     "En Devolución",
+    "PENDIENTE CLIENTE",
+    "Pendiente Indemnización",
+    "PENDIENTE EFFI",
 }
 
 

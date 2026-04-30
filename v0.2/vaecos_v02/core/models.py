@@ -11,6 +11,7 @@ class NotionClientRecord:
     guia: str
     estado_novedad: str
     carrier: str = "effi"
+    fecha_ultimo_seguimiento: str | None = None
 
 
 @dataclass(frozen=True)

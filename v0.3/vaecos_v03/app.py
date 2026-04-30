@@ -65,6 +65,21 @@ _STATIC_MIME = {
 }
 
 
+def _render_rules_maintenance() -> str:
+    body = hero(
+        "Reglas en mantenimiento",
+        "La gestión web de reglas está deshabilitada temporalmente mientras alineamos esta sección con la lógica operativa actual.",
+        button("/", "Volver al inicio", "ghost"),
+    )
+    body += panel(
+        "<p class='muted' style='margin:0'>"
+        "Por ahora no se pueden crear, editar ni previsualizar reglas desde la web. "
+        "Usa la operación normal del sistema hasta que este módulo vuelva a estar disponible."
+        "</p>"
+    )
+    return layout("Reglas en mantenimiento", body)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Dashboard web VAECOS v0.3")
     parser.add_argument("--host", help="Host para el servidor web")
@@ -154,20 +169,8 @@ def _make_handler(repo: DashboardRepository):
                 if path.startswith("/guides/"):
                     guide = unquote(path.split("/")[-1])
                     return self._send_html(_render_guide_detail(repo, guide))
-                if path == "/rules":
-                    flash = _rules_flash_message(query)
-                    return self._send_html(_render_rules_list(repo.db_path, flash))
-                if path == "/rules/new":
-                    return self._send_html(_render_rule_form(repo.db_path, None))
-                if path == "/rules/preview":
-                    guia = (_q(query, "guia") or "").strip() or None
-                    return self._send_html(_render_rule_preview(repo.db_path, guia))
-                if path.startswith("/rules/") and path.endswith("/edit"):
-                    rule_id = int(path.split("/")[2])
-                    return self._send_html(_render_rule_form(repo.db_path, rule_id))
-                if path.startswith("/rules/") and path.endswith("/history"):
-                    rule_id = int(path.split("/")[2])
-                    return self._send_html(_render_rule_history(repo.db_path, rule_id))
+                if path == "/rules" or path.startswith("/rules/"):
+                    return self._send_html(_render_rules_maintenance())
             except ValueError:
                 return self._send_text("Ruta invalida", HTTPStatus.BAD_REQUEST)
             except Exception as exc:  # noqa: BLE001
@@ -180,17 +183,8 @@ def _make_handler(repo: DashboardRepository):
             try:
                 if path == "/run/new":
                     return self._handle_run_submit()
-                if path == "/rules/new":
-                    return self._handle_rule_create()
-                if path.startswith("/rules/") and path.endswith("/edit"):
-                    rule_id = int(path.split("/")[2])
-                    return self._handle_rule_update(rule_id)
-                if path.startswith("/rules/") and path.endswith("/toggle"):
-                    rule_id = int(path.split("/")[2])
-                    return self._redirect(_rules_handle_toggle(repo.db_path, rule_id))
-                if path.startswith("/rules/") and path.endswith("/delete"):
-                    rule_id = int(path.split("/")[2])
-                    return self._redirect(_rules_handle_delete(repo.db_path, rule_id))
+                if path == "/rules" or path.startswith("/rules/"):
+                    return self._send_html(_render_rules_maintenance())
             except Exception as exc:  # noqa: BLE001
                 return self._send_text(f"Error interno: {exc}", HTTPStatus.INTERNAL_SERVER_ERROR)
             return self._send_text("No encontrado", HTTPStatus.NOT_FOUND)

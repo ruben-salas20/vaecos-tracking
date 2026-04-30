@@ -6,7 +6,7 @@ from pathlib import Path
 
 from vaecos_v02.app.config import Settings
 from vaecos_v02.core.models import EffiTrackingData, ProcessingResult, RunContext
-from vaecos_v02.core.rules import DEFAULT_RULES, decide_status
+from vaecos_v02.core.rules import DEFAULT_RULES, classify_result_with_cooldown, decide_status
 from vaecos_v02.providers.carrier import Carrier, CarrierConfig
 from vaecos_v02.providers.carriers import make_carrier
 from vaecos_v02.providers.notion_provider import NotionProvider
@@ -168,12 +168,12 @@ def execute_tracking(
                     rules=active_rules,
                     carrier=record.carrier,
                 )
-                if decision.review_needed:
-                    resultado = "manual_review"
-                elif decision.estado_propuesto == record.estado_novedad:
-                    resultado = "unchanged"
-                else:
-                    resultado = "changed"
+                resultado, motivo, accion, estado_propuesto = classify_result_with_cooldown(
+                    decision=decision,
+                    notion_estado=record.estado_novedad,
+                    fecha_ultimo_seguimiento=record.fecha_ultimo_seguimiento,
+                    today=run_context.today,
+                )
 
                 actualizacion_notion = "No aplica"
                 if resultado == "changed":
@@ -192,10 +192,10 @@ def execute_tracking(
                     guia=record.guia,
                     estado_notion_actual=record.estado_novedad,
                     estado_effi_actual=tracking.estado_actual,
-                    estado_propuesto=decision.estado_propuesto,
+                    estado_propuesto=estado_propuesto,
                     resultado=resultado,
-                    motivo=decision.motivo,
-                    requiere_accion=decision.requiere_accion,
+                    motivo=motivo,
+                    requiere_accion=accion,
                     actualizacion_notion=actualizacion_notion,
                     carrier=record.carrier,
                 )

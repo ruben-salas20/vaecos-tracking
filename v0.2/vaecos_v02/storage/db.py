@@ -151,6 +151,78 @@ def init_db(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
+def _ensure_bodega_customer_novelty_rule(connection: sqlite3.Connection) -> None:
+    """Idempotent migration: insert the 'Almacenado en bodega con novedad
+    de cliente' rule if it does not already exist in the rules table.
+
+    This handles live databases that were seeded before the rule was added
+    to DEFAULT_RULES — seed_if_empty won't fire on a non-empty table.
+    """
+    if not _table_exists(connection, "rules"):
+        return
+
+    row_count = connection.execute(
+        "SELECT COUNT(*) AS c FROM rules"
+    ).fetchone()
+    if row_count is None or row_count["c"] == 0:
+        return  # table is empty — seed_if_empty / init flow will fill it
+
+    row = connection.execute(
+        "SELECT COUNT(*) AS c FROM rules WHERE name = ?",
+        ("Almacenado en bodega con novedad de cliente",),
+    ).fetchone()
+    if row is not None and row["c"] > 0:
+        return  # already present
+
+    from datetime import datetime as _datetime
+
+    now = _datetime.now().isoformat(timespec="seconds")
+    novelty_patterns = [
+        "cliente no quiso recibir",
+        "cliente no quizo recibir",
+        "nadie en casa",
+        "direccion no corresponde",
+        "dirección no corresponde",
+        "cliente no llego al punto de encuentro",
+        "cliente no llego a punto de encuentro",
+        "cliente no llegó al punto de encuentro",
+        "cliente no llegó a punto de encuentro",
+    ]
+
+    connection.execute(
+        """
+        INSERT INTO rules (
+            carrier, name, priority, enabled,
+            estado_match_kind, estado_match_values,
+            novelty_match_kind, novelty_match_values,
+            days_comparator, days_threshold,
+            estado_propuesto, motivo_template, requiere_accion,
+            review_needed, notes, updated_at, updated_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "effi",
+            "Almacenado en bodega con novedad de cliente",
+            25,
+            1,
+            "equals_one_of",
+            json.dumps(["almacenado en bodega"], ensure_ascii=False),
+            "contains_any_of",
+            json.dumps(novelty_patterns, ensure_ascii=False),
+            None,
+            None,
+            "En novedad",
+            "Almacenado en bodega con novedad coincidente: {matched_novelty}.",
+            "Hablar con cliente",
+            0,
+            "",
+            now,
+            "migration",
+        ),
+    )
+    connection.commit()
+
+
 def _apply_migrations(connection: sqlite3.Connection) -> None:
     """Idempotent ALTERs for schemas created before new columns existed."""
     _migrate_legacy_rules_table(connection)
@@ -159,6 +231,8 @@ def _apply_migrations(connection: sqlite3.Connection) -> None:
         connection.execute(
             "ALTER TABLE run_results ADD COLUMN carrier TEXT NOT NULL DEFAULT 'effi'"
         )
+
+    _ensure_bodega_customer_novelty_rule(connection)
 
 
 def _migrate_legacy_rules_table(connection: sqlite3.Connection) -> None:

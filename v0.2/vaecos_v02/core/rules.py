@@ -14,7 +14,9 @@ ANOMALIA_PATTERNS = [
     "direccion no corresponde",
     "dirección no corresponde",
     "cliente no llego al punto de encuentro",
+    "cliente no llego a punto de encuentro",
     "cliente no llegó al punto de encuentro",
+    "cliente no llegó a punto de encuentro",
 ]
 
 
@@ -52,6 +54,25 @@ DEFAULT_RULES: list[Rule] = [
         days_threshold=None,
         estado_propuesto="En novedad",
         motivo_template="Anomalia con novedad coincidente: {matched_novelty}.",
+        requiere_accion="Hablar con cliente",
+        review_needed=False,
+        notes="",
+        updated_by="seed",
+    ),
+    Rule(
+        id=None,
+        carrier="effi",
+        name="Almacenado en bodega con novedad de cliente",
+        priority=25,
+        enabled=True,
+        estado_match_kind="equals_one_of",
+        estado_match_values=["almacenado en bodega"],
+        novelty_match_kind="contains_any_of",
+        novelty_match_values=list(ANOMALIA_PATTERNS),
+        days_comparator=None,
+        days_threshold=None,
+        estado_propuesto="En novedad",
+        motivo_template="Almacenado en bodega con novedad coincidente: {matched_novelty}.",
         requiere_accion="Hablar con cliente",
         review_needed=False,
         notes="",
@@ -212,40 +233,62 @@ DEFAULT_RULES: list[Rule] = [
 ]
 
 
-def decide_status(
-    tracking: EffiTrackingData,
-    today: date,
-    rules: Iterable[Rule] | None = None,
-    *,
-    carrier: str = "effi",
-) -> RuleDecision:
-    """Evaluates rules (priority asc, first match wins) against tracking data.
+# ── rule classification helpers (semantic, no schema change) ──────────
 
-    When rules is None, uses DEFAULT_RULES. Hardcoded fallback decisions are
-    applied only when no rule matches, to keep the engine safe even with an
-    empty rules table.
+
+def _terminal(rule: Rule) -> bool:
+    """Rule whose estado_propuesto is a definitive end state (delivered / returned)."""
+    return rule.estado_propuesto in {"ENTREGADA", "En Devolución"}
+
+
+def _stagnation(rule: Rule) -> bool:
+    """Rule that depends on days-since-last-status (days_comparator is not None)."""
+    return rule.days_comparator is not None
+
+
+def _contextual(rule: Rule) -> bool:
+    """Rule that matches against novelty text and is not a terminal rule."""
+    return rule.novelty_match_kind != "any" and not _terminal(rule)
+
+
+def _operational(rule: Rule) -> bool:
+    """Any remaining rule not classified as terminal, contextual, or stagnation."""
+    return not _terminal(rule) and not _contextual(rule) and not _stagnation(rule)
+
+
+def _latest_relevant_novelty_text(tracking: EffiTrackingData) -> str:
+    """Return the normalized text of the most recent novelty event.
+
+    Uses only the latest event (by date) to avoid old contextual signals
+    leaking into current decisions.  Returns '' when there are no events.
     """
-    rule_list = list(rules) if rules is not None else DEFAULT_RULES
-    rule_list = sorted(
-        (r for r in rule_list if r.enabled and _carrier_matches(r.carrier, carrier)),
-        key=lambda r: r.priority,
-    )
+    dated = [ev for ev in tracking.novelty_history if ev.date is not None]
+    if not dated:
+        return ""
+    # All items in dated have non-None .date after the filter above.
+    latest = max(dated, key=lambda ev: ev.date)  # type: ignore[arg-type]
+    return normalize_for_match(f"{latest.novelty} {latest.details}")
 
-    estado_raw = tracking.estado_actual or ""
-    estado_norm = normalize_for_match(estado_raw)
-    latest_status_date = _latest_status_date(tracking)
-    latest_novelty_text = " ".join(
-        normalize_for_match(f"{event.novelty} {event.details}")
-        for event in tracking.novelty_history
-    )
 
-    for rule in rule_list:
+def _try_match_in_group(
+    rules: list[Rule],
+    *,
+    estado_norm: str,
+    novelty_text: str,
+    days: int | None,
+    estado_raw: str,
+) -> RuleDecision | None:
+    """Evaluate a group of rules (already sorted by priority ASC).
+
+    Returns the decision of the first matching rule, or None if no rule
+    matches in this group.
+    """
+    for rule in rules:
         if not _estado_matches(rule, estado_norm):
             continue
-        novelty_hit = _novelty_match(rule, latest_novelty_text)
+        novelty_hit = _novelty_match(rule, novelty_text)
         if novelty_hit is None:
             continue
-        days = _days_since(latest_status_date, today)
         if not _days_matches(rule, days):
             continue
         motivo = _format_motivo(
@@ -262,7 +305,182 @@ def decide_status(
             matched_rule_id=rule.id,
             matched_rule_name=rule.name,
         )
+    return None
 
+
+# ── cooldown helpers ──────────────────────────────────────────────────
+
+
+def is_gestation_cooldown_active(
+    notion_estado: str,
+    decision: RuleDecision,
+    fecha_ultimo_seguimiento: str | None,
+    today: date,
+) -> bool:
+    """Determine if the Gestión novedad 2-day cooldown should block a change.
+
+    Purpose:
+    When a guide in Notion is ``Gestión novedad`` and the rule engine
+    proposes ``En novedad`` (from ANOMALIA or ALMACENADO EN BODEGA rules),
+    the update SHALL be blocked for 2 calendar days since the last
+    seguimiento date.
+
+    Terminal outcomes (``ENTREGADA``, ``En Devolución``) and contextual
+    progress signals (``Por recoger (INFORMADO)``, ``En ruta de entrega``)
+    are automatically bypassed because they produce a different
+    ``estado_propuesto`` value.
+
+    Returns ``True`` when ALL conditions are met:
+    1. Notion status is exactly ``"Gestión novedad"``
+    2. The decision's ``estado_propuesto`` is ``"En novedad"``
+    3. ``review_needed`` is ``False``
+    4. ``fecha_ultimo_seguimiento`` is a parseable ISO date
+    5. Fewer than 2 calendar days have elapsed since that date
+    """
+    if notion_estado != "Gestión novedad":
+        return False
+    if decision.estado_propuesto != "En novedad":
+        return False
+    if decision.review_needed:
+        return False
+    if not fecha_ultimo_seguimiento:
+        return False  # cannot determine cooldown without a date
+
+    try:
+        last_date = date.fromisoformat(fecha_ultimo_seguimiento)
+    except (ValueError, TypeError):
+        return False
+
+    return (today - last_date).days < 2
+
+
+def classify_result_with_cooldown(
+    decision: RuleDecision,
+    notion_estado: str,
+    fecha_ultimo_seguimiento: str | None,
+    today: date,
+) -> tuple[str, str, str, str | None]:
+    """Classify the processing result, factoring in the Gestión novedad cooldown.
+
+    Returns:
+        ``(resultado, motivo, accion, estado_propuesto)`` where
+        ``resultado`` is one of ``"changed"``, ``"unchanged"``, or
+        ``"manual_review"``, and ``estado_propuesto`` is the state to
+        display in the report.
+
+        When the cooldown is active, ``estado_propuesto`` is set to
+        ``"Gestión novedad"`` (suggesting the operator keep the current
+        state) and the motivo is phrased in business terms without
+        exposing technical cooldown jargon.
+
+        When the cooldown is NOT active, ``estado_propuesto`` is the
+        value from the rule decision unchanged.
+    """
+    if is_gestation_cooldown_active(
+        notion_estado=notion_estado,
+        decision=decision,
+        fecha_ultimo_seguimiento=fecha_ultimo_seguimiento,
+        today=today,
+    ):
+        return (
+            "unchanged",
+            "Se mantiene Gestión novedad. La guía fue revisada en los últimos 2 días.",
+            "No aplica",
+            "Gestión novedad",
+        )
+
+    if decision.review_needed:
+        return ("manual_review", decision.motivo, decision.requiere_accion, decision.estado_propuesto)
+    if decision.estado_propuesto == notion_estado:
+        return ("unchanged", decision.motivo, decision.requiere_accion, decision.estado_propuesto)
+    return ("changed", decision.motivo, decision.requiere_accion, decision.estado_propuesto)
+
+
+# ── public API ──────────────────────────────────────────────────────────
+
+
+def decide_status(
+    tracking: EffiTrackingData,
+    today: date,
+    rules: Iterable[Rule] | None = None,
+    *,
+    carrier: str = "effi",
+) -> RuleDecision:
+    """Evaluate rules in stratified semantic order: terminal → operational →
+    contextual (latest novelty only) → stagnation.
+
+    Terminal outcomes (ENTREGADA, En Devolución) are evaluated first and,
+    if matched, returned immediately.  Contextual rules use only the
+    latest relevant novelty to avoid old signals leaking into current
+    decisions.
+
+    When *rules* is None the engine falls back to DEFAULT_RULES.  A
+    hardcoded fallback decision is returned only when no rule matches.
+    """
+    rule_list = list(rules) if rules is not None else DEFAULT_RULES
+    rule_list = sorted(
+        (r for r in rule_list if r.enabled and _carrier_matches(r.carrier, carrier)),
+        key=lambda r: r.priority,
+    )
+
+    estado_raw = tracking.estado_actual or ""
+    estado_norm = normalize_for_match(estado_raw)
+    latest_status_date = _latest_status_date(tracking)
+    days = _days_since(latest_status_date, today)
+
+    # Partition into semantic groups (priority ASC within each group)
+    terminal_rules = [r for r in rule_list if _terminal(r)]
+    operational_rules = [r for r in rule_list if _operational(r)]
+    contextual_rules = [r for r in rule_list if _contextual(r)]
+    stagnation_rules = [r for r in rule_list if _stagnation(r)]
+
+    latest_rel_novelty = _latest_relevant_novelty_text(tracking)
+
+    # ── phase 1: terminal rules ──────────────────────────────────────
+    decision = _try_match_in_group(
+        terminal_rules,
+        estado_norm=estado_norm,
+        novelty_text="",
+        days=days,
+        estado_raw=estado_raw,
+    )
+    if decision is not None:
+        return decision
+
+    # ── phase 2: operational rules ───────────────────────────────────
+    decision = _try_match_in_group(
+        operational_rules,
+        estado_norm=estado_norm,
+        novelty_text="",
+        days=days,
+        estado_raw=estado_raw,
+    )
+    if decision is not None:
+        return decision
+
+    # ── phase 3: contextual rules (latest novelty only) ─────────────
+    decision = _try_match_in_group(
+        contextual_rules,
+        estado_norm=estado_norm,
+        novelty_text=latest_rel_novelty,
+        days=days,
+        estado_raw=estado_raw,
+    )
+    if decision is not None:
+        return decision
+
+    # ── phase 4: stagnation rules ────────────────────────────────────
+    decision = _try_match_in_group(
+        stagnation_rules,
+        estado_norm=estado_norm,
+        novelty_text="",
+        days=days,
+        estado_raw=estado_raw,
+    )
+    if decision is not None:
+        return decision
+
+    # ── fallback ──────────────────────────────────────────────────────
     if estado_raw:
         return RuleDecision(
             estado_propuesto=None,

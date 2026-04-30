@@ -154,12 +154,14 @@ class NotionProvider:
             return None
         carrier_raw = self._read_select(properties.get("Transportista")) or "effi"
         carrier = carrier_raw.strip().lower() or "effi"
+        fecha_str = self._read_date(properties.get("Fecha \u00faltimo seguimiento"))
         return NotionClientRecord(
             page_id=page_id,
             nombre=nombre,
             guia=guia,
             estado_novedad=estado_novedad,
             carrier=carrier,
+            fecha_ultimo_seguimiento=fecha_str or None,
         )
 
     @staticmethod
@@ -194,3 +196,14 @@ class NotionProvider:
             return ""
         select = prop.get("select")
         return str(select.get("name", "")).strip() if isinstance(select, dict) else ""
+
+    @staticmethod
+    def _read_date(prop: Any) -> str:
+        """Extract a date.start value from a Notion date property.
+        Returns '' when the property is missing, null, or malformed."""
+        if not isinstance(prop, dict):
+            return ""
+        date_obj = prop.get("date")
+        if not isinstance(date_obj, dict):
+            return ""
+        return str(date_obj.get("start", "")).strip()
