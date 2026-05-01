@@ -304,6 +304,7 @@ def _try_match_in_group(
             review_needed=rule.review_needed,
             matched_rule_id=rule.id,
             matched_rule_name=rule.name,
+            days_since_last_status=days,
         )
     return None
 
@@ -314,8 +315,6 @@ def _try_match_in_group(
 def is_gestation_cooldown_active(
     notion_estado: str,
     decision: RuleDecision,
-    fecha_ultimo_seguimiento: str | None,
-    today: date,
 ) -> bool:
     """Determine if the Gestión novedad 2-day cooldown should block a change.
 
@@ -323,7 +322,11 @@ def is_gestation_cooldown_active(
     When a guide in Notion is ``Gestión novedad`` and the rule engine
     proposes ``En novedad`` (from ANOMALIA or ALMACENADO EN BODEGA rules),
     the update SHALL be blocked for 2 calendar days since the last
-    seguimiento date.
+    Effi status/novelty event.
+
+    The cooldown is based on ``decision.days_since_last_status`` which
+    is computed from the latest Effi event date — NOT from
+    ``Fecha último seguimiento`` in Notion.
 
     Terminal outcomes (``ENTREGADA``, ``En Devolución``) and contextual
     progress signals (``Por recoger (INFORMADO)``, ``En ruta de entrega``)
@@ -334,8 +337,8 @@ def is_gestation_cooldown_active(
     1. Notion status is exactly ``"Gestión novedad"``
     2. The decision's ``estado_propuesto`` is ``"En novedad"``
     3. ``review_needed`` is ``False``
-    4. ``fecha_ultimo_seguimiento`` is a parseable ISO date
-    5. Fewer than 2 calendar days have elapsed since that date
+    4. ``decision.days_since_last_status`` is not ``None``
+    5. Fewer than 2 calendar days have elapsed since last Effi event
     """
     if notion_estado != "Gestión novedad":
         return False
@@ -343,22 +346,14 @@ def is_gestation_cooldown_active(
         return False
     if decision.review_needed:
         return False
-    if not fecha_ultimo_seguimiento:
-        return False  # cannot determine cooldown without a date
-
-    try:
-        last_date = date.fromisoformat(fecha_ultimo_seguimiento)
-    except (ValueError, TypeError):
-        return False
-
-    return (today - last_date).days < 2
+    if decision.days_since_last_status is None:
+        return False  # cannot determine cooldown without Effi date
+    return decision.days_since_last_status < 2
 
 
 def classify_result_with_cooldown(
     decision: RuleDecision,
     notion_estado: str,
-    fecha_ultimo_seguimiento: str | None,
-    today: date,
 ) -> tuple[str, str, str, str | None]:
     """Classify the processing result, factoring in the Gestión novedad cooldown.
 
@@ -368,25 +363,48 @@ def classify_result_with_cooldown(
         ``"manual_review"``, and ``estado_propuesto`` is the state to
         display in the report.
 
-        When the cooldown is active, ``estado_propuesto`` is set to
-        ``"Gestión novedad"`` (suggesting the operator keep the current
-        state) and the motivo is phrased in business terms without
-        exposing technical cooldown jargon.
+    Cooldown (based on Effi latest-status days, not Notion fecha):
 
-        When the cooldown is NOT active, ``estado_propuesto`` is the
-        value from the rule decision unchanged.
+    * When the cooldown is ACTIVE (< 2 days from last Effi event),
+      ``estado_propuesto`` is ``"Gestión novedad"`` (suggesting the
+      operator keep the current state).  Motivo is operator-friendly.
+
+    * When the cooldown has EXPIRED (≥ 2 days from last Effi event)
+      AND Notion is ``"Gestión novedad"`` AND the rule engine proposes
+      ``"En novedad"`` → the system transitions to ``"Sin movimiento"``
+      with ``"Gestionar con encargado"``.
+
+    * Terminal/clear-advance states (``ENTREGADA``, ``En Devolución``,
+      ``Por recoger (INFORMADO)``, ``En ruta de entrega``) bypass both
+      the active and expired cooldown branches.
     """
+    # Active cooldown: block the change, keep Gestión novedad
     if is_gestation_cooldown_active(
         notion_estado=notion_estado,
         decision=decision,
-        fecha_ultimo_seguimiento=fecha_ultimo_seguimiento,
-        today=today,
     ):
         return (
             "unchanged",
-            "Se mantiene Gestión novedad. La guía fue revisada en los últimos 2 días.",
+            "Se mantiene Gestión novedad. La novedad fue registrada recientemente en Effi.",
             "No aplica",
             "Gestión novedad",
+        )
+
+    # Expired cooldown (≥ 2 days since last Effi event):
+    # Notion is "Gestión novedad", rule proposes "En novedad",
+    # but the situation has persisted → transition to "Sin movimiento".
+    if (
+        notion_estado == "Gestión novedad"
+        and decision.estado_propuesto == "En novedad"
+        and not decision.review_needed
+        and decision.days_since_last_status is not None
+        and decision.days_since_last_status >= 2
+    ):
+        return (
+            "changed",
+            "La novedad lleva más de 2 días sin cambio en Effi. Se sugiere pasar a Sin movimiento.",
+            "Gestionar con encargado",
+            "Sin movimiento",
         )
 
     if decision.review_needed:
@@ -405,14 +423,19 @@ def decide_status(
     rules: Iterable[Rule] | None = None,
     *,
     carrier: str = "effi",
+    notion_estado: str | None = None,
 ) -> RuleDecision:
     """Evaluate rules in stratified semantic order: terminal → operational →
-    contextual (latest novelty only) → stagnation.
+    contextual (latest novelty only) → stagnation → preservation.
 
     Terminal outcomes (ENTREGADA, En Devolución) are evaluated first and,
     if matched, returned immediately.  Contextual rules use only the
     latest relevant novelty to avoid old signals leaking into current
     decisions.
+
+    Non-terminal rule matches (operational, contextual, stagnation) are
+    saved and then evaluated against the 'Sin movimiento' preservation
+    phase before being returned.
 
     When *rules* is None the engine falls back to DEFAULT_RULES.  A
     hardcoded fallback decision is returned only when no rule matches.
@@ -436,7 +459,7 @@ def decide_status(
 
     latest_rel_novelty = _latest_relevant_novelty_text(tracking)
 
-    # ── phase 1: terminal rules ──────────────────────────────────────
+    # ── phase 1: terminal rules (return immediately — definitive) ──
     decision = _try_match_in_group(
         terminal_rules,
         estado_norm=estado_norm,
@@ -447,38 +470,54 @@ def decide_status(
     if decision is not None:
         return decision
 
+    non_terminal: RuleDecision | None = None
+
     # ── phase 2: operational rules ───────────────────────────────────
-    decision = _try_match_in_group(
+    non_terminal = _try_match_in_group(
         operational_rules,
         estado_norm=estado_norm,
         novelty_text="",
         days=days,
         estado_raw=estado_raw,
     )
-    if decision is not None:
-        return decision
 
     # ── phase 3: contextual rules (latest novelty only) ─────────────
-    decision = _try_match_in_group(
-        contextual_rules,
-        estado_norm=estado_norm,
-        novelty_text=latest_rel_novelty,
-        days=days,
-        estado_raw=estado_raw,
-    )
-    if decision is not None:
-        return decision
+    if non_terminal is None:
+        non_terminal = _try_match_in_group(
+            contextual_rules,
+            estado_norm=estado_norm,
+            novelty_text=latest_rel_novelty,
+            days=days,
+            estado_raw=estado_raw,
+        )
 
     # ── phase 4: stagnation rules ────────────────────────────────────
-    decision = _try_match_in_group(
-        stagnation_rules,
-        estado_norm=estado_norm,
-        novelty_text="",
-        days=days,
-        estado_raw=estado_raw,
-    )
-    if decision is not None:
-        return decision
+    if non_terminal is None:
+        non_terminal = _try_match_in_group(
+            stagnation_rules,
+            estado_norm=estado_norm,
+            novelty_text="",
+            days=days,
+            estado_raw=estado_raw,
+        )
+
+    # ── phase 5: preservation of "Sin movimiento" ──────────────────
+    # When Notion says "Sin movimiento" and Effi shows no recent
+    # movement (> 3 days or unknown), preserve the Notion state
+    # and override any non-terminal rule match.
+    if notion_estado == "Sin movimiento":
+        if days is None or days > 3:
+            return RuleDecision(
+                estado_propuesto="Sin movimiento",
+                motivo="Se mantiene Sin movimiento. "
+                       "No se detecta movimiento reciente en Effi.",
+                requiere_accion="Gestionar con encargado",
+                review_needed=False,
+                days_since_last_status=days,
+            )
+
+    if non_terminal is not None:
+        return non_terminal
 
     # ── fallback ──────────────────────────────────────────────────────
     if estado_raw:
@@ -487,12 +526,14 @@ def decide_status(
             motivo=f"Estado de Effi sin regla exacta: {estado_raw}.",
             requiere_accion="Revisar manualmente",
             review_needed=True,
+            days_since_last_status=days,
         )
     return RuleDecision(
         estado_propuesto=None,
         motivo="No se pudo extraer el estado actual de Effi.",
         requiere_accion="Revisar manualmente",
         review_needed=True,
+        days_since_last_status=days,
     )
 
 

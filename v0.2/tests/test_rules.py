@@ -400,12 +400,13 @@ class RulesTestCase(unittest.TestCase):
         self.assertEqual(decision.requiere_accion, "Hablar con cliente")
 
     # ------------------------------------------------------------------
-    # Phase 7 — Gestión novedad 2-day operational cooldown
+    # Post-RFC: Gestión novedad cooldown (based on Effi days, not Notion fecha)
     # ------------------------------------------------------------------
     def _make_cooldown_decision(
         self,
         estado_propuesto: str | None = "En novedad",
         review_needed: bool = False,
+        days_since_last_status: int | None = None,
     ) -> RuleDecision:
         """Helper: build a RuleDecision for cooldown testing."""
         return RuleDecision(
@@ -415,56 +416,72 @@ class RulesTestCase(unittest.TestCase):
             review_needed=review_needed,
             matched_rule_id=1,
             matched_rule_name="Test rule",
+            days_since_last_status=days_since_last_status,
         )
 
-    def test_cooldown_active_within_2_days(self) -> None:
-        """RED: Gestión novedad + En novedad + fecha 1 day ago → cooldown ACTIVE."""
-        decision = self._make_cooldown_decision(estado_propuesto="En novedad")
+    # ── is_gestation_cooldown_active() unit tests ────────────────────
+
+    def test_cooldown_active_when_effi_days_less_than_2(self) -> None:
+        """RED: Gestión novedad + En novedad + 1 Effi day → cooldown ACTIVE."""
+        decision = self._make_cooldown_decision(
+            estado_propuesto="En novedad", days_since_last_status=1
+        )
         self.assertTrue(
             is_gestation_cooldown_active(
                 notion_estado="Gestión novedad",
                 decision=decision,
-                fecha_ultimo_seguimiento="2026-04-29",
-                today=date(2026, 4, 30),
             ),
-            "Cooldown debe estar activo con solo 1 día transcurrido",
+            "Cooldown debe estar activo con 1 día desde último evento Effi",
         )
 
-    def test_cooldown_expired_after_2_days(self) -> None:
-        """Triangulate: fecha >= 2 days ago → cooldown must NOT be active."""
-        decision = self._make_cooldown_decision(estado_propuesto="En novedad")
+    def test_cooldown_expired_when_effi_days_2_or_more(self) -> None:
+        """Triangulate: Effi days ≥ 2 → cooldown must NOT be active."""
+        decision = self._make_cooldown_decision(
+            estado_propuesto="En novedad", days_since_last_status=2
+        )
         self.assertFalse(
             is_gestation_cooldown_active(
                 notion_estado="Gestión novedad",
                 decision=decision,
-                fecha_ultimo_seguimiento="2026-04-28",
-                today=date(2026, 4, 30),
             ),
-            "Cooldown debe expirar a los 2 días (≥ 2)",
+            "Cooldown debe expirar a los 2 días (≥ 2) desde Effi",
+        )
+
+    def test_cooldown_expired_when_effi_days_5(self) -> None:
+        """Triangulate: 5 Effi days → cooldown definitely NOT active."""
+        decision = self._make_cooldown_decision(
+            estado_propuesto="En novedad", days_since_last_status=5
+        )
+        self.assertFalse(
+            is_gestation_cooldown_active(
+                notion_estado="Gestión novedad",
+                decision=decision,
+            ),
+            "A los 5 días el cooldown ya no debe estar activo",
         )
 
     def test_cooldown_bypass_terminal_entregada(self) -> None:
         """Bypass: ENTREGADA decision must NOT trigger cooldown."""
-        decision = self._make_cooldown_decision(estado_propuesto="ENTREGADA")
+        decision = self._make_cooldown_decision(
+            estado_propuesto="ENTREGADA", days_since_last_status=1
+        )
         self.assertFalse(
             is_gestation_cooldown_active(
                 notion_estado="Gestión novedad",
                 decision=decision,
-                fecha_ultimo_seguimiento="2026-04-29",
-                today=date(2026, 4, 30),
             ),
             "ENTREGADA siempre debe bypassear el cooldown",
         )
 
     def test_cooldown_bypass_terminal_en_devolucion(self) -> None:
         """Bypass: En Devolución decision must NOT trigger cooldown."""
-        decision = self._make_cooldown_decision(estado_propuesto="En Devolución")
+        decision = self._make_cooldown_decision(
+            estado_propuesto="En Devolución", days_since_last_status=1
+        )
         self.assertFalse(
             is_gestation_cooldown_active(
                 notion_estado="Gestión novedad",
                 decision=decision,
-                fecha_ultimo_seguimiento="2026-04-29",
-                today=date(2026, 4, 30),
             ),
             "En Devolución siempre debe bypassear el cooldown",
         )
@@ -472,14 +489,12 @@ class RulesTestCase(unittest.TestCase):
     def test_cooldown_bypass_por_recoger(self) -> None:
         """Bypass: Por recoger (INFORMADO) must NOT trigger cooldown."""
         decision = self._make_cooldown_decision(
-            estado_propuesto="Por recoger (INFORMADO)"
+            estado_propuesto="Por recoger (INFORMADO)", days_since_last_status=1
         )
         self.assertFalse(
             is_gestation_cooldown_active(
                 notion_estado="Gestión novedad",
                 decision=decision,
-                fecha_ultimo_seguimiento="2026-04-29",
-                today=date(2026, 4, 30),
             ),
             "Por recoger siempre debe bypassear el cooldown",
         )
@@ -487,122 +502,145 @@ class RulesTestCase(unittest.TestCase):
     def test_cooldown_bypass_en_ruta_de_entrega(self) -> None:
         """Bypass: En ruta de entrega must NOT trigger cooldown."""
         decision = self._make_cooldown_decision(
-            estado_propuesto="En ruta de entrega"
+            estado_propuesto="En ruta de entrega", days_since_last_status=1
         )
         self.assertFalse(
             is_gestation_cooldown_active(
                 notion_estado="Gestión novedad",
                 decision=decision,
-                fecha_ultimo_seguimiento="2026-04-29",
-                today=date(2026, 4, 30),
             ),
             "En ruta de entrega siempre debe bypassear el cooldown",
         )
 
     def test_cooldown_bypass_different_notion_state(self) -> None:
         """Bypass: only 'Gestión novedad' triggers cooldown, not other states."""
-        decision = self._make_cooldown_decision(estado_propuesto="En novedad")
+        decision = self._make_cooldown_decision(
+            estado_propuesto="En novedad", days_since_last_status=1
+        )
         self.assertFalse(
             is_gestation_cooldown_active(
                 notion_estado="En novedad",
                 decision=decision,
-                fecha_ultimo_seguimiento="2026-04-29",
-                today=date(2026, 4, 30),
             ),
             "Solo Gestión novedad activa el cooldown, no En novedad",
         )
 
-    def test_cooldown_bypass_no_fecha(self) -> None:
-        """Bypass: when fecha_ultimo_seguimiento is None, cooldown cannot be
+    def test_cooldown_bypass_no_effi_days(self) -> None:
+        """Bypass: when Effi days_since_last_status is None, cooldown cannot be
         determined → return False (don't block the update)."""
-        decision = self._make_cooldown_decision(estado_propuesto="En novedad")
+        decision = self._make_cooldown_decision(
+            estado_propuesto="En novedad", days_since_last_status=None
+        )
         self.assertFalse(
             is_gestation_cooldown_active(
                 notion_estado="Gestión novedad",
                 decision=decision,
-                fecha_ultimo_seguimiento=None,
-                today=date(2026, 4, 30),
             ),
-            "Sin fecha no se puede determinar cooldown → no bloquear",
+            "Sin fecha Effi no se puede determinar cooldown → no bloquear",
         )
 
     def test_cooldown_bypass_review_needed(self) -> None:
         """Bypass: when decision has review_needed=True, cooldown does not apply."""
         decision = self._make_cooldown_decision(
-            estado_propuesto="En novedad", review_needed=True
+            estado_propuesto="En novedad", review_needed=True,
+            days_since_last_status=1,
         )
         self.assertFalse(
             is_gestation_cooldown_active(
                 notion_estado="Gestión novedad",
                 decision=decision,
-                fecha_ultimo_seguimiento="2026-04-29",
-                today=date(2026, 4, 30),
             ),
             "Si review_needed ya está activo, no aplica cooldown",
         )
 
     def test_cooldown_bypass_estado_propuesto_none(self) -> None:
         """Bypass: when decision has estado_propuesto=None, cooldown does not apply."""
-        decision = self._make_cooldown_decision(estado_propuesto=None)
+        decision = self._make_cooldown_decision(
+            estado_propuesto=None, days_since_last_status=1,
+        )
         self.assertFalse(
             is_gestation_cooldown_active(
                 notion_estado="Gestión novedad",
                 decision=decision,
-                fecha_ultimo_seguimiento="2026-04-29",
-                today=date(2026, 4, 30),
             ),
             "Si no hay estado propuesto, no aplica cooldown",
         )
 
-    # ------------------------------------------------------------------
-    # 7.3 — classify_result_with_cooldown integration tests
-    # ------------------------------------------------------------------
+    # ── classify_result_with_cooldown() integration tests ────────────
+
     def test_classify_cooldown_blocks_en_novedad_operator_friendly(self) -> None:
-        """RED: Gestión novedad + En novedad within 2 days → result 'unchanged',
-        but with operator-friendly representation (no 'cooldown' as main concept)."""
-        decision = self._make_cooldown_decision(estado_propuesto="En novedad")
+        """RED: Gestión novedad + En novedad within 2 Effi days → result 'unchanged',
+        operator-friendly representation (no 'cooldown' as main concept)."""
+        decision = self._make_cooldown_decision(
+            estado_propuesto="En novedad", days_since_last_status=1
+        )
         resultado, motivo, accion, estado_propuesto = classify_result_with_cooldown(
             decision=decision,
             notion_estado="Gestión novedad",
-            fecha_ultimo_seguimiento="2026-04-29",
-            today=date(2026, 4, 30),
         )
         self.assertEqual(resultado, "unchanged")
-        # Verify estado_propuesto override → operator sees "Gestión novedad" not "En novedad"
         self.assertEqual(estado_propuesto, "Gestión novedad",
             "Debe sugerir mantener Gestión novedad, no exponer En novedad")
-        # Verify motivo is operator-friendly — NO mention of 'cooldown' or 'bloqueado'
         self.assertNotIn("BLOQUEADO", motivo,
             "No debe exponer lenguaje técnico de bloqueo")
         self.assertNotIn("COOLDOWN", motivo,
             "No debe exponer el término cooldown como concepto principal")
         self.assertIn("Gestión novedad", motivo,
             "Debe mencionar que se mantiene Gestión novedad")
-        # Verify accion is consistent with the system's 'No aplica' pattern
         self.assertEqual(accion, "No aplica")
+
+    def test_classify_cooldown_expired_transitions_to_sin_movimiento(self) -> None:
+        """RED: Gestión novedad + En novedad + 2+ Effi days → Sin movimiento."""
+        decision = self._make_cooldown_decision(
+            estado_propuesto="En novedad", days_since_last_status=2
+        )
+        resultado, motivo, accion, estado_propuesto = classify_result_with_cooldown(
+            decision=decision,
+            notion_estado="Gestión novedad",
+        )
+        self.assertEqual(resultado, "changed",
+            "Tras cooldown expirado debe proponer cambio a Sin movimiento")
+        self.assertEqual(estado_propuesto, "Sin movimiento",
+            "Debe sugerir transición a Sin movimiento")
+        self.assertEqual(accion, "Gestionar con encargado",
+            "La acción debe ser Gestionar con encargado")
+        self.assertIn("Sin movimiento", motivo,
+            "El motivo debe mencionar Sin movimiento")
+
+    def test_classify_cooldown_expired_with_5_effi_days(self) -> None:
+        """Triangulate: 5 Effi days → Sin movimiento transition."""
+        decision = self._make_cooldown_decision(
+            estado_propuesto="En novedad", days_since_last_status=5
+        )
+        resultado, _, accion, estado_propuesto = classify_result_with_cooldown(
+            decision=decision,
+            notion_estado="Gestión novedad",
+        )
+        self.assertEqual(resultado, "changed")
+        self.assertEqual(estado_propuesto, "Sin movimiento")
+        self.assertEqual(accion, "Gestionar con encargado")
 
     def test_classify_cooldown_allows_terminal_entregada(self) -> None:
         """Terminal ENTREGADA bypasses cooldown → 'changed' (different from Gestión)."""
-        decision = self._make_cooldown_decision(estado_propuesto="ENTREGADA")
+        decision = self._make_cooldown_decision(
+            estado_propuesto="ENTREGADA", days_since_last_status=1
+        )
         resultado, motivo, _, estado_propuesto = classify_result_with_cooldown(
             decision=decision,
             notion_estado="Gestión novedad",
-            fecha_ultimo_seguimiento="2026-04-29",
-            today=date(2026, 4, 30),
         )
         self.assertEqual(resultado, "changed")
         self.assertNotIn("BLOQUEADO", motivo)
-        # When cooldown is NOT active, estado_propuesto comes from the decision
         self.assertEqual(estado_propuesto, "ENTREGADA")
 
     def test_classify_cooldown_allows_ruta_entrega_reciente(self) -> None:
         """En ruta de entrega bypasses cooldown → 'changed'."""
-        decision = self._make_cooldown_decision(estado_propuesto="En ruta de entrega")
+        decision = self._make_cooldown_decision(
+            estado_propuesto="En ruta de entrega", days_since_last_status=1
+        )
         resultado, motivo, _, estado_propuesto = classify_result_with_cooldown(
             decision=decision,
             notion_estado="Gestión novedad",
-            fecha_ultimo_seguimiento="2026-04-29",
-            today=date(2026, 4, 30),
         )
         self.assertEqual(resultado, "changed")
         self.assertNotIn("BLOQUEADO", motivo)
@@ -611,13 +649,12 @@ class RulesTestCase(unittest.TestCase):
     def test_classify_cooldown_respects_review_needed(self) -> None:
         """Decision with review_needed stays manual_review regardless of cooldown."""
         decision = self._make_cooldown_decision(
-            estado_propuesto="En novedad", review_needed=True
+            estado_propuesto="En novedad", review_needed=True,
+            days_since_last_status=1,
         )
         resultado, _, _, estado_propuesto = classify_result_with_cooldown(
             decision=decision,
             notion_estado="Gestión novedad",
-            fecha_ultimo_seguimiento="2026-04-29",
-            today=date(2026, 4, 30),
         )
         self.assertEqual(resultado, "manual_review")
         self.assertEqual(estado_propuesto, "En novedad")
@@ -628,23 +665,154 @@ class RulesTestCase(unittest.TestCase):
         resultado, _, _, estado_propuesto = classify_result_with_cooldown(
             decision=decision,
             notion_estado="En novedad",
-            fecha_ultimo_seguimiento=None,
-            today=date(2026, 4, 30),
         )
         self.assertEqual(resultado, "unchanged")
         self.assertEqual(estado_propuesto, "En novedad")
 
     def test_classify_cooldown_changed_when_different_no_cooldown(self) -> None:
         """Different state, no cooldown conditions met → 'changed'."""
-        decision = self._make_cooldown_decision(estado_propuesto="Por recoger (INFORMADO)")
+        decision = self._make_cooldown_decision(
+            estado_propuesto="Por recoger (INFORMADO)"
+        )
         resultado, _, _, estado_propuesto = classify_result_with_cooldown(
             decision=decision,
             notion_estado="En ruta",
-            fecha_ultimo_seguimiento=None,
-            today=date(2026, 4, 30),
         )
         self.assertEqual(resultado, "changed")
         self.assertEqual(estado_propuesto, "Por recoger (INFORMADO)")
+
+    def test_classify_cooldown_expired_not_blocked_by_no_effi_days(self) -> None:
+        """When Effi days is None, expired branch must NOT trigger (no date → can't
+        determine if it's been 2+ days). Normal rules proceed."""
+        decision = self._make_cooldown_decision(
+            estado_propuesto="En novedad", days_since_last_status=None
+        )
+        resultado, _, _, estado_propuesto = classify_result_with_cooldown(
+            decision=decision,
+            notion_estado="Gestión novedad",
+        )
+        # Notion "Gestión novedad" vs proposed "En novedad" → different → "changed"
+        # But with no Effi date, we can't determine if 2+ days have passed
+        # Normal rules should apply: propose the rule's estado_propuesto
+        self.assertEqual(resultado, "changed")
+        self.assertEqual(estado_propuesto, "En novedad",
+            "Sin fecha Effi, debe proponer En novedad (no transición a Sin movimiento)")
+
+    def test_classify_cooldown_terminal_entregada_with_old_effi_days(self) -> None:
+        """Terminal ENTREGADA with 10 Effi days must still bypass → ENTREGADA."""
+        decision = self._make_cooldown_decision(
+            estado_propuesto="ENTREGADA", days_since_last_status=10
+        )
+        resultado, _, _, estado_propuesto = classify_result_with_cooldown(
+            decision=decision,
+            notion_estado="Gestión novedad",
+        )
+        self.assertEqual(resultado, "changed")
+        self.assertEqual(estado_propuesto, "ENTREGADA",
+            "ENTREGADA debe bypassear incluso con días viejos de Effi")
+
+
+    # ══════════════════════════════════════════════════════════════════
+    # Task 1.3 — RED: M1 preservation of "Sin movimiento"
+    # Scenario: Notion says "Sin movimiento", Effi has no recent
+    # movement (latest_status_date > 3 days). The normal rules would
+    # fall through to manual_review, but preservation must override
+    # to keep "Sin movimiento".
+    # ══════════════════════════════════════════════════════════════════
+    def test_sin_movimiento_preservation_when_no_recent_effi_movement(self) -> None:
+        """RED: Notion 'Sin movimiento' + Effi last movement 7 days ago →
+        preservation overrides any other rule and returns 'Sin movimiento'."""
+        tracking = EffiTrackingData(
+            url="https://example.test",
+            estado_actual="En oficina central",
+            status_history=[
+                EffiStatusEvent(
+                    date=datetime(2026, 4, 23, 9, 0),  # 7 days ago from today
+                    status="En oficina central",
+                )
+            ],
+            novelty_history=[],
+        )
+
+        # Without preservation, no rule matches "En oficina central"
+        # → fallback with review_needed=True.
+        # With preservation, "Sin movimiento" from Notion is respected.
+        decision = decide_status(
+            tracking,
+            today=date(2026, 4, 30),
+            notion_estado="Sin movimiento",
+        )
+
+        self.assertEqual(decision.estado_propuesto, "Sin movimiento",
+                         "Preservación debe mantener Sin movimiento cuando Effi no tiene movimiento reciente")
+        self.assertIn("Sin movimiento", decision.motivo,
+                      "El motivo debe indicar que se preserva Sin movimiento")
+        self.assertFalse(decision.review_needed,
+                         "Preservación no debe marcar review_needed")
+        self.assertIsNone(decision.matched_rule_id,
+                          "No debe atribuirse a una regla concreta")
+
+    def test_sin_movimiento_preservation_when_status_date_unknown(self) -> None:
+        """RED: Notion 'Sin movimiento' + Effi latest_status_date is None
+        (unknown/parse error) → preservation keeps 'Sin movimiento'."""
+        tracking = EffiTrackingData(
+            url="https://example.test",
+            estado_actual="Paquete listo",
+            status_history=[
+                EffiStatusEvent(
+                    date=None,  # unknown date
+                    status="Paquete listo",
+                )
+            ],
+            novelty_history=[],
+        )
+
+        decision = decide_status(
+            tracking,
+            today=date(2026, 4, 30),
+            notion_estado="Sin movimiento",
+        )
+
+        self.assertEqual(decision.estado_propuesto, "Sin movimiento",
+                         "Fecha desconocida equivale a sin movimiento reciente → preservar")
+        self.assertIn("Sin movimiento", decision.motivo)
+
+    # ══════════════════════════════════════════════════════════════════
+    # Task 1.4 — TRIANGULATE: preservation does NOT block when
+    # Effi shows recent movement (≤ 2 days)
+    # ══════════════════════════════════════════════════════════════════
+    def test_sin_movimiento_no_preservation_when_recent_effi_movement(self) -> None:
+        """TRIANGULATE: Notion 'Sin movimiento' + Effi movement 1 day ago →
+        preservation must NOT block other rules from firing."""
+        tracking = EffiTrackingData(
+            url="https://example.test",
+            estado_actual="ALMACENADO EN BODEGA",
+            status_history=[
+                EffiStatusEvent(
+                    date=datetime(2026, 4, 29, 9, 0),  # 1 day ago
+                    status="ALMACENADO EN BODEGA",
+                )
+            ],
+            novelty_history=[
+                EffiNovedadEvent(
+                    date=datetime(2026, 4, 29, 9, 0),
+                    novelty="Paquete en agencia",
+                    details="Oficina central",
+                )
+            ],
+        )
+
+        decision = decide_status(
+            tracking,
+            today=date(2026, 4, 30),
+            notion_estado="Sin movimiento",
+        )
+
+        # With recent movement (1 day), the contextual rule should fire
+        # and preservation must NOT override it.
+        self.assertEqual(decision.estado_propuesto, "Por recoger (INFORMADO)",
+                         "Con movimiento reciente, la preservación no debe bloquear otras reglas")
+        self.assertEqual(decision.matched_rule_name, "Paquete en agencia (novedad)")
 
 
 if __name__ == "__main__":

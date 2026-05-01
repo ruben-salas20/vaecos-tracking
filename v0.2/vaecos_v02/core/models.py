@@ -44,6 +44,7 @@ class RuleDecision:
     review_needed: bool = False
     matched_rule_id: int | None = None
     matched_rule_name: str | None = None
+    days_since_last_status: int | None = None
 
 
 @dataclass(frozen=True)

@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS run_results (
     requiere_accion TEXT NOT NULL,
     actualizacion_notion TEXT,
     error TEXT,
+    notas_operador TEXT,
     FOREIGN KEY(run_id) REFERENCES runs(id)
 );
 
@@ -230,6 +231,11 @@ def _apply_migrations(connection: sqlite3.Connection) -> None:
     if not _column_exists(connection, "run_results", "carrier"):
         connection.execute(
             "ALTER TABLE run_results ADD COLUMN carrier TEXT NOT NULL DEFAULT 'effi'"
+        )
+
+    if not _column_exists(connection, "run_results", "notas_operador"):
+        connection.execute(
+            "ALTER TABLE run_results ADD COLUMN notas_operador TEXT"
         )
 
     _ensure_bodega_customer_novelty_rule(connection)

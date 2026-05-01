@@ -46,6 +46,47 @@ def layout(title: str, body: str) -> str:
       background: var(--sidebar-bg); color: var(--sidebar-text);
       display: flex; flex-direction: column;
       position: sticky; top: 0; height: 100vh; overflow-y: auto;
+      transition: width .2s;
+    }}
+    .sidebar-collapsed {{
+      width: 44px; overflow: hidden;
+    }}
+    .sidebar-collapsed .sidebar-brand,
+    .sidebar-collapsed .nav-label,
+    .sidebar-collapsed .nav a {{
+      display: none;
+    }}
+    .sidebar-collapsed .sidebar-toggle-btn {{
+      justify-content: center; padding: 10px 0;
+    }}
+    .sidebar-brand-compact {{
+      display: none;
+    }}
+    .sidebar-collapsed .sidebar-brand-compact {{
+      display: flex; justify-content: center; align-items: center;
+      padding: 10px 0 6px; border-bottom: 1px solid rgba(255,255,255,.07);
+      margin-bottom: 4px;
+    }}
+    .sidebar-collapsed .sidebar-brand-compact img {{
+      height: 26px; width: auto;
+    }}
+    .sidebar-toggle-btn {{
+      display: flex; align-items: center; gap: 6px;
+      padding: 0 0 2px; cursor: pointer; user-select: none;
+      border: none; background: none; color: var(--sidebar-muted);
+      font: inherit; font-size: .68rem; font-weight: 700;
+      letter-spacing: .1em; text-transform: uppercase;
+      margin-bottom: 12px;
+    }}
+    .sidebar-toggle-btn:hover {{ color: #cbd5e1; }}
+    .sidebar-toggle-icon {{
+      font-size: 1rem; line-height: 1;
+    }}
+    .sidebar-toggle-icon::before {{
+      content: '\\25c0';
+    }}
+    .sidebar-collapsed .sidebar-toggle-icon::before {{
+      content: '\\25b6';
     }}
     .sidebar-brand {{
       padding: 18px 18px 16px;
@@ -220,6 +261,26 @@ def layout(title: str, body: str) -> str:
     code {{ background: #eef2f8; padding: 2px 6px; border-radius: 5px; font-size: .82em; }}
     .sep {{ height: 1px; background: var(--border); margin: 24px 0; }}
 
+    /* ── Inline edit (notas operadora) ────────────────── */
+    .notas-cell {{ min-width: 160px; }}
+    .notas-text {{ display: block; }}
+    .notas-edit-btn {{
+      margin-top: 4px; padding: 2px 8px; font-size: .75rem; min-height: auto;
+    }}
+    .notas-edit-btn:hover {{ background: #f1f5f9 !important; }}
+    .notas-edit-icon {{ font-size: .9rem; }}
+    .notas-form {{ margin-top: 6px; }}
+    .notas-form textarea {{
+      width: 100%; min-height: 60px; font-size: .8rem;
+      padding: 6px 10px;
+    }}
+    .notas-form-actions {{
+      display: flex; gap: 6px; margin-top: 6px;
+    }}
+    .notas-form-actions .button {{
+      font-size: .75rem; padding: 4px 10px; min-height: auto;
+    }}
+
     /* ── Responsive ───────────────────────────────────── */
     @media (max-width: 860px) {{
       .app {{ grid-template-columns: 1fr; }}
@@ -243,31 +304,38 @@ def layout(title: str, body: str) -> str:
         </div>
         <div class="brand-sub">Seguimiento de guias</div>
       </div>
+      <div class="sidebar-brand-compact">
+        <img src="/static/logo.png" alt="VAECOS" title="VAECOS Tracking">
+      </div>
       <div class="sidebar-nav">
+        <button class="sidebar-toggle-btn" onclick="toggleSidebar()" title="Colapsar/expandir menu">
+          <span class="sidebar-toggle-icon"></span>
+          <span class="sidebar-toggle-label">Menu</span>
+        </button>
         <div class="nav-group">
           <div class="nav-label">Operaciones</div>
           <nav class="nav">
-            <a class="nav-primary" href="/attention">Requiere atencion</a>
-            <a href="/">Resumen</a>
+            <a class="nav-primary" href="/attention" title="Requiere atencion">Requiere atencion</a>
+            <a href="/" title="Resumen">Resumen</a>
           </nav>
         </div>
         <div class="nav-group">
           <div class="nav-label">Historial</div>
           <nav class="nav">
-            <a href="/runs">Corridas</a>
+            <a href="/runs" title="Corridas">Corridas</a>
           </nav>
         </div>
         <div class="nav-group">
           <div class="nav-label">Inteligencia</div>
           <nav class="nav">
-            <a href="/analytics">Analytics</a>
+            <a href="/analytics" title="Analytics">Analytics</a>
           </nav>
         </div>
         <div class="nav-group">
           <div class="nav-label">Acciones</div>
           <nav class="nav">
-            <a href="/run/new">Nueva corrida</a>
-            <a href="/rules">Reglas</a>
+            <a href="/run/new" title="Nueva corrida">Nueva corrida</a>
+            <a href="/rules" title="Reglas">Reglas</a>
           </nav>
         </div>
       </div>
@@ -289,6 +357,47 @@ def layout(title: str, body: str) -> str:
       else                       {{ active = (path === href); }}
       if (active) a.classList.add('nav-active');
     }});
+
+    // ── Inline edit for notas_operador ──────────────────
+    window.toggleNotasForm = function(guia) {{
+      var form = document.getElementById('notas-form-' + guia);
+      var text = document.getElementById('notas-text-' + guia);
+      if (!form || !text) return;
+      if (form.style.display === 'none' || form.style.display === '') {{
+        form.style.display = 'block';
+        text.style.display = 'none';
+        form.querySelector('textarea').focus();
+      }} else {{
+        form.style.display = 'none';
+        text.style.display = '';
+      }}
+    }};
+
+    // ── Full sidebar toggle ─────────────────────────────
+    window.toggleSidebar = function() {{
+      var sidebar = document.querySelector('.sidebar');
+      var app = document.querySelector('.app');
+      if (!sidebar || !app) return;
+      var collapsed = sidebar.classList.toggle('sidebar-collapsed');
+      if (collapsed) {{
+        app.style.gridTemplateColumns = '44px minmax(0,1fr)';
+      }} else {{
+        app.style.gridTemplateColumns = '';
+      }}
+      localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
+    }};
+
+    (function() {{
+      // Restore sidebar collapse state
+      if (localStorage.getItem('sidebarCollapsed') === '1') {{
+        var sidebar = document.querySelector('.sidebar');
+        var app = document.querySelector('.app');
+        if (sidebar && app) {{
+          sidebar.classList.add('sidebar-collapsed');
+          app.style.gridTemplateColumns = '44px minmax(0,1fr)';
+        }}
+      }}
+    }})();
   </script>
 </body>
 </html>

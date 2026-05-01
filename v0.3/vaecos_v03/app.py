@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import secrets
 import sys
 import threading
@@ -8,6 +9,38 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
+
+# ── Effi CSV export sanitization ──────────────────────────────────────────
+# Patterns that identify internal VAECOS recommendation/state-tracking text
+# to be stripped from the Problema column in Effi CSV exports.
+# The Effi encargada needs operational problems, not VAECOS internal reasoning.
+
+_EFFI_INTERNAL_PATTERNS: list[str] = [
+    # Suffix: "Se sugiere ..." — VAECOS recommendations (e.g. "Se sugiere pasar a Sin movimiento.")
+    r'\s*Se sugiere\s+[^.]*\.[ ]*$',
+    # Prefix: "Se mantiene [estado]. " — VAECOS state-tracking statements
+    r'^Se mantiene\s+[^.]*\.[ ]*',
+]
+
+
+def _sanitize_problema_for_effi(motivo: str) -> str:
+    """Strip internal VAECOS phrases from motivo for Effi CSV export.
+
+    The Problema column in the Effi CSV must contain only the operational
+    problem description, not VAECOS internal recommendations or
+    state-tracking notes.  The 'Estado sugerido' column / run context
+    already covers the recommendation.
+    """
+    if not motivo:
+        return ""
+    result = motivo.strip()
+    for pattern in _EFFI_INTERNAL_PATTERNS:
+        result = re.sub(pattern, "", result)
+    result = result.strip()
+    # Clean up leftover double punctuation (e.g. "problema.." → "problema.")
+    result = re.sub(r'\.\s*\.', '.', result)
+    return result
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 V02_ROOT = REPO_ROOT / "v0.2"
@@ -153,6 +186,8 @@ def _make_handler(repo: DashboardRepository):
                     return self._send_html(_render_attention(repo))
                 if path == "/analytics":
                     return self._send_html(_render_analytics(repo, query))
+                if path == "/analytics/por-recoger":
+                    return self._send_html(_render_analytics_por_recoger(repo))
                 if path.startswith("/clients/"):
                     cliente = unquote(path.split("/", 2)[-1])
                     return self._send_html(_render_client_detail(repo, cliente, query))
@@ -164,8 +199,15 @@ def _make_handler(repo: DashboardRepository):
                     token = path.split("/")[-1]
                     return self._send_html(_render_run_progress(token))
                 if path.startswith("/runs/"):
-                    run_id = int(path.split("/")[-1])
-                    return self._send_html(_render_run_detail(repo, run_id, query))
+                    segments = path.split("/")
+                    # /runs/<id>/export/effi — MUST come BEFORE generic /runs/<id>
+                    if len(segments) >= 5 and segments[3] == "export" and segments[4] == "effi":
+                        run_id = int(segments[2])
+                        return self._handle_export_effi(run_id)
+                    # /runs/<id> — generic run detail
+                    if len(segments) == 3:
+                        run_id = int(segments[2])
+                        return self._send_html(_render_run_detail(repo, run_id, query))
                 if path.startswith("/guides/"):
                     guide = unquote(path.split("/")[-1])
                     return self._send_html(_render_guide_detail(repo, guide))
@@ -181,6 +223,13 @@ def _make_handler(repo: DashboardRepository):
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/") or "/"
             try:
+                # /runs/<run_id>/results/<guia>/notas — MUST come before generic POST routes
+                if path.startswith("/runs/") and "/results/" in path and path.endswith("/notas"):
+                    segments = path.split("/")
+                    if len(segments) >= 6 and segments[3] == "results" and segments[5] == "notas":
+                        run_id = int(segments[2])
+                        guia = unquote(segments[4])
+                        return self._handle_notes_post(run_id, guia)
                 if path == "/run/new":
                     return self._handle_run_submit()
                 if path == "/rules" or path.startswith("/rules/"):
@@ -229,6 +278,52 @@ def _make_handler(repo: DashboardRepository):
             self.send_response(HTTPStatus.SEE_OTHER)
             self.send_header("Location", f"/run/progress/{token}")
             self.end_headers()
+
+        # ── 3.3 Export Effi CSV ───────────────────────────────────────
+
+        def _handle_export_effi(self, run_id: int) -> None:
+            import csv
+            import io
+
+            rows = repo.export_effi_rows(run_id)
+            buf = io.StringIO(newline="")
+            writer = csv.writer(buf)
+            writer.writerow([
+                "No. Guía", "Estado actual (Effi)", "Problema", "Notas operadora",
+            ])
+            for row in rows:
+                problema = _sanitize_problema_for_effi(row["motivo"] or "")
+                writer.writerow([
+                    row["guia"] or "",
+                    row["estado_effi_actual"] or "",
+                    problema,
+                    row["notas_operador"] or "",
+                ])
+            encoded = ("\ufeff" + buf.getvalue()).encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.send_header(
+                "Content-Disposition",
+                f'attachment; filename="run_{run_id}_effi_export.csv"',
+            )
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        # ── 3.2 POST notes handler ────────────────────────────────────
+
+        def _handle_notes_post(self, run_id: int, guia: str) -> None:
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = self.rfile.read(length).decode("utf-8") if length else ""
+            form = parse_qs(payload)
+            note = (form.get("notas_operador", [""]) or [""])[0]
+            repo.update_operator_note(run_id, guia, note)
+            # Redirect back to the run detail page for the user to see the note
+            self.send_response(HTTPStatus.SEE_OTHER)
+            self.send_header("Location", f"/runs/{run_id}")
+            self.end_headers()
+
+        # ── Rule handlers ────────────────────────────────────────────
 
         def _handle_rule_create(self) -> None:
             form = self._read_form()
@@ -439,7 +534,9 @@ def _render_run_detail(repo: DashboardRepository, run_id: int, query: dict[str, 
     body = hero(
         f"Corrida #{run_id}",
         "",
-        button("/run/new", "Nueva corrida") + button("/runs", "Volver a corridas", "ghost"),
+        button("/run/new", "Nueva corrida")
+        + button(f"/runs/{run_id}/export/effi", "Descargar para Effi", "secondary")
+        + button("/runs", "Volver a corridas", "ghost"),
     )
     # Insert subtitle with raw HTML (mode_badge is HTML)
     body = body.replace('<p></p>', f'<p class="muted">{subtitle}</p>')
@@ -461,7 +558,9 @@ def _render_run_detail(repo: DashboardRepository, run_id: int, query: dict[str, 
         '</form>'
     ).replace(f'<option value="{result_filter}">', f'<option value="{result_filter}" selected>')
     body += table(
-        ["Guia", "Cliente", "Transportista", "Resultado", "Accion requerida", "Notion", "Effi", "Propuesto", "Motivo", "Error"],
+        ["Guia", "Cliente", "Transportista", "Resultado", "Accion requerida",
+         "Notion", "Effi", "Propuesto", "Motivo",
+         "Último estado", "Notas operadora", "Error"],
         [
             [
                 f'<a href="/guides/{_u(row["guia"])}">{_e(row["guia"])}</a>',
@@ -473,6 +572,8 @@ def _render_run_detail(repo: DashboardRepository, run_id: int, query: dict[str, 
                 _e(row["estado_effi_actual"] or "N/D"),
                 _e(row["estado_propuesto"] or "N/D"),
                 _e_trunc(row["motivo"]),
+                _format_date_short(_row_get(row, "latest_status_date")),
+                _notas_operadora_cell(row, run_id),
                 _e_trunc(row["error"] or ""),
             ]
             for row in rows
@@ -498,7 +599,9 @@ def _render_guide_detail(repo: DashboardRepository, guide: str) -> str:
         ("Ultima corrida", f"#{rows[0]['run_id']}"),
     ])
     body += table(
-        ["Corrida", "Inicio", "Modo", "Transportista", "Resultado", "Notion", "Effi", "Propuesto", "Motivo", "Error"],
+        ["Corrida", "Inicio", "Modo", "Transportista", "Resultado",
+         "Notion", "Effi", "Propuesto", "Motivo",
+         "Último estado", "Notas operadora", "Error"],
         [
             [
                 f'<a href="/runs/{row["run_id"]}">#{row["run_id"]}</a>',
@@ -510,6 +613,8 @@ def _render_guide_detail(repo: DashboardRepository, guide: str) -> str:
                 _e(row["estado_effi_actual"] or "N/D"),
                 _e(row["estado_propuesto"] or "N/D"),
                 _e_trunc(row["motivo"]),
+                _format_date_short(_row_get(row, "latest_status_date")),
+                _e_trunc(_row_get(row, "notas_operador") or ""),
                 _e_trunc(row["error"] or ""),
             ]
             for row in rows
@@ -608,11 +713,15 @@ def _render_analytics(repo: DashboardRepository, query: dict[str, list[str]]) ->
     parse_err_rate = (parse_err / total_rows * 100) if total_rows else 0.0
     err_rate = (err / total_rows * 100) if total_rows else 0.0
 
+    por_recoger = repo.latest_por_recoger_total()
+    por_recoger_variant = "warn" if por_recoger > 0 else ""
+
     body += card_grid(
         [
             ("Corridas", str(int(kpi["total_runs"] or 0)), "info"),
             ("Guias unicas", str(int(kpi["unique_guides"] or 0)), ""),
             ("Cambios detectados", str(int(kpi["changed"] or 0)), "info"),
+            ("Por recoger en oficina", str(por_recoger), por_recoger_variant),
             (
                 "Parse error rate",
                 f"{parse_err_rate:.1f}%",
@@ -629,6 +738,37 @@ def _render_analytics(repo: DashboardRepository, query: dict[str, list[str]]) ->
                 "warn" if int(kpi["manual_review"] or 0) > 0 else "",
             ),
         ]
+    )
+
+    # M3 v2 — Por recoger breakdown (delivered vs returned)
+    breakdown = repo.por_recoger_delivery_breakdown()
+    body += h("Desglose — Por recoger en oficina")
+    body += panel(
+        p(
+            "De las guias que alguna vez estuvieron 'Por recoger (INFORMADO)', "
+            "cuantas terminaron entregadas, devueltas, o siguen sin resolver."
+            + f" Total actual en este estado: {breakdown['total_por_recoger']}.",
+            muted=True,
+        )
+    )
+    body += card_grid(
+        [
+            ("Entregadas", str(breakdown["delivered"]), "ok" if breakdown["delivered"] > 0 else ""),
+            ("Devueltas", str(breakdown["returned"]), "danger" if breakdown["returned"] > 0 else ""),
+            ("Pendientes (aun por recoger)", str(breakdown["total_por_recoger"]), "warn" if breakdown["total_por_recoger"] > 0 else ""),
+        ]
+    )
+
+    # ── CTA to dedicated Por recoger detail page ─────────────────────
+    body += h("Ver detalle de guias")
+    body += panel(
+        p(
+            "Revisa el detalle completo de todas las guias relacionadas "
+            "con 'Por recoger en oficina', separadas en entregadas, "
+            "devueltas y pendientes.",
+            muted=True,
+        )
+        + button("/analytics/por-recoger", "Ver detalle", "secondary")
     )
 
     body += h("Tendencia de atencion")
@@ -725,6 +865,107 @@ def _render_analytics(repo: DashboardRepository, query: dict[str, list[str]]) ->
         body += panel(p("Sin datos de estado Effi en la ventana.", muted=True))
 
     return layout("Analytics", body)
+
+
+def _render_analytics_por_recoger(repo: DashboardRepository) -> str:
+    """Dedicated page with full detail of Por recoger guides, split into
+    3 groups: Entregadas, Devueltas, and Pendientes (aun por recoger).
+
+    Each group lists concrete guide identities for operational verification.
+    """
+    breakdown = repo.por_recoger_detailed_breakdown()
+
+    actions = (
+        button("/analytics", "Volver a analytics", "ghost")
+    )
+    body = hero(
+        "Por recoger — Detalle",
+        "Guías que han pasado por el estado 'Por recoger (INFORMADO)' y su situación actual.",
+        actions,
+    )
+
+    body += card_grid([
+        ("Entregadas", str(len(breakdown["delivered"])), "ok" if breakdown["delivered"] else ""),
+        ("Devueltas", str(len(breakdown["returned"])), "danger" if breakdown["returned"] else ""),
+        ("Pendientes (aun por recoger)", str(breakdown["total_por_recoger"]), "warn" if breakdown["total_por_recoger"] > 0 else ""),
+    ])
+
+    # ── Entregadas ──────────────────────────────────────────────────
+    body += h(f"Entregadas ({len(breakdown['delivered'])})")
+    if breakdown["delivered"]:
+        body += panel(p(
+            "Guias que estaban 'Por recoger (INFORMADO)' y fueron entregadas.",
+            muted=True,
+        ))
+        body += table(
+            ["Guia", "Cliente", "Transportista", "Estado final", "Corrida"],
+            [
+                [
+                    f'<a href="/guides/{_u(row["guia"])}">{_e(row["guia"])}</a>',
+                    _e(row["cliente"]),
+                    carrier_badge(_row_get(row, "carrier")),
+                    _e(row["estado_propuesto"] or "N/D"),
+                    f'<a href="/runs/{row["run_id"]}">#{row["run_id"]}</a>',
+                ]
+                for row in breakdown["delivered"]
+            ],
+        )
+    else:
+        body += panel(p("No hay guias entregadas en esta categoria.", muted=True))
+
+    # ── Devueltas ───────────────────────────────────────────────────
+    body += h(f"Devueltas ({len(breakdown['returned'])})")
+    if breakdown["returned"]:
+        body += panel(p(
+            "Guias que estaban 'Por recoger (INFORMADO)' y fueron devueltas.",
+            muted=True,
+        ))
+        body += table(
+            ["Guia", "Cliente", "Transportista", "Estado final", "Corrida"],
+            [
+                [
+                    f'<a href="/guides/{_u(row["guia"])}">{_e(row["guia"])}</a>',
+                    _e(row["cliente"]),
+                    carrier_badge(_row_get(row, "carrier")),
+                    _e(row["estado_propuesto"] or "N/D"),
+                    f'<a href="/runs/{row["run_id"]}">#{row["run_id"]}</a>',
+                ]
+                for row in breakdown["returned"]
+            ],
+        )
+    else:
+        body += panel(p("No hay guias devueltas en esta categoria.", muted=True))
+
+    # ── Pendientes (aun por recoger) ─────────────────────────────────
+    body += h(f"Pendientes — Aun por recoger ({breakdown['total_por_recoger']})")
+    if breakdown["pending"]:
+        body += panel(p(
+            "Guias que aun estan en estado 'Por recoger (INFORMADO)' "
+            "en la corrida mas reciente.",
+            muted=True,
+        ))
+        body += table(
+            ["Guia", "Cliente", "Transportista", "Estado", "Accion requerida", "Corrida"],
+            [
+                [
+                    f'<a href="/guides/{_u(row["guia"])}">{_e(row["guia"])}</a>',
+                    _e(row["cliente"]),
+                    carrier_badge(_row_get(row, "carrier")),
+                    _e(row["estado_propuesto"] or "N/D"),
+                    _e(row["requiere_accion"] or "—"),
+                    f'<a href="/runs/{row["run_id"]}">#{row["run_id"]}</a>',
+                ]
+                for row in breakdown["pending"]
+            ],
+        )
+    else:
+        body += panel(p(
+            "No hay guias pendientes en 'Por recoger (INFORMADO)' "
+            "en la corrida mas reciente.",
+            muted=True,
+        ))
+
+    return layout("Por recoger — Detalle", body)
 
 
 def _render_client_detail(
@@ -907,6 +1148,18 @@ def _fmt_ts(ts: str | None) -> str:
         return ts[:16]
 
 
+def _format_date_short(date_str: str | None) -> str:
+    """Render a YYYY-MM-DD date as DD/MM/YYYY. Returns '—' for None/non-parseable."""
+    if not date_str:
+        return "—"
+    date_part = str(date_str)[:10]
+    try:
+        year, month, day = date_part.split("-")
+        return f"{int(day):02d}/{int(month):02d}/{year}"
+    except (ValueError, IndexError):
+        return "—"
+
+
 def _e_trunc(value: object, max_len: int = 90) -> str:
     """Escape and truncate long text; show full text on hover via title attribute."""
     from html import escape
@@ -916,3 +1169,37 @@ def _e_trunc(value: object, max_len: int = 90) -> str:
     if len(s) <= max_len:
         return escape(s)
     return f'<span class="cell-trunc" title="{escape(s)}">{escape(s[:max_len])}\u2026</span>'
+
+
+def _notas_operadora_cell(row, run_id: int) -> str:
+    """Render the 'Notas operadora' table cell with inline edit UI.
+
+    Shows the current note text with a small edit button. Clicking the
+    button reveals an inline form that POSTs to the existing notes endpoint.
+    """
+    from html import escape
+    guia = str(row["guia"])
+    nota = _row_get(row, "notas_operador") or ""
+    guia_esc = escape(guia)
+    nota_display = escape(nota) if nota else '<span class="muted">—</span>'
+    nota_value = escape(nota)
+
+    return (
+        f'<div class="notas-cell">'
+        f'<span class="notas-text" id="notas-text-{guia_esc}">{nota_display}</span>'
+        f'<button class="notas-edit-btn button ghost" type="button" '
+        f'onclick="toggleNotasForm(\'{guia_esc}\')" '
+        f'title="Editar nota de operadora">'
+        f'<span class="notas-edit-icon">&#9998;</span>'
+        f'</button>'
+        f'<form id="notas-form-{guia_esc}" class="notas-form" method="post" '
+        f'action="/runs/{run_id}/results/{_u(guia)}/notas" style="display:none">'
+        f'<textarea name="notas_operador" rows="2">{nota_value}</textarea>'
+        f'<div class="notas-form-actions">'
+        f'<button type="submit" class="button">Guardar</button>'
+        f'<button type="button" class="button ghost" '
+        f'onclick="toggleNotasForm(\'{guia_esc}\')">Cancelar</button>'
+        f'</div>'
+        f'</form>'
+        f'</div>'
+    )

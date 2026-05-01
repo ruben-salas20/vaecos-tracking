@@ -1,12 +1,12 @@
-# RFC-001: Mejoras y Fixes — Solicitudes Operadora v0.3.3
+# RFC-001: Mejoras y Fixes — Solicitudes Operadora sobre v0.3.3
 
 | Campo           | Valor                                      |
 |-----------------|--------------------------------------------|
 | **RFC**         | RFC-001                                    |
-| **Estado**      | Borrador                                   |
+| **Estado**      | Aprobado                                  |
 | **Autor**       | Ruben Salas                                |
 | **Fecha**       | 2026-05-01                                 |
-| **Versión**     | v0.3.3 (versión del proyecto a liberar)    |
+| **Versión**     | v0.3.4 (versión del proyecto a liberar)    |
 
 ---
 

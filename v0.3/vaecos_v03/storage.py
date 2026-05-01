@@ -39,12 +39,18 @@ class DashboardRepository:
             return list(
                 connection.execute(
                     """
-                    SELECT guia, cliente, carrier, estado_notion_actual, estado_effi_actual,
-                           estado_propuesto, resultado, motivo, requiere_accion,
-                           actualizacion_notion, error
-                    FROM run_results
-                    WHERE run_id = ?
-                    ORDER BY guia ASC
+                    SELECT rr.guia, rr.cliente, rr.carrier,
+                           rr.estado_notion_actual, rr.estado_effi_actual,
+                           rr.estado_propuesto, rr.resultado, rr.motivo,
+                           rr.requiere_accion, rr.actualizacion_notion,
+                           rr.error, rr.notas_operador,
+                           (SELECT MAX(tse.event_at)
+                            FROM tracking_status_events tse
+                            WHERE tse.run_id = rr.run_id
+                              AND tse.guia = rr.guia) AS latest_status_date
+                    FROM run_results rr
+                    WHERE rr.run_id = ?
+                    ORDER BY rr.guia ASC
                     """,
                     (run_id,),
                 ).fetchall()
@@ -331,8 +337,14 @@ class DashboardRepository:
                 connection.execute(
                     """
                     SELECT rr.run_id, r.started_at, r.mode, rr.resultado, rr.carrier,
-                           rr.estado_notion_actual, rr.estado_effi_actual, rr.estado_propuesto,
-                           rr.actualizacion_notion, rr.motivo, rr.error, rr.cliente
+                           rr.estado_notion_actual, rr.estado_effi_actual,
+                           rr.estado_propuesto, rr.actualizacion_notion,
+                           rr.motivo, rr.error, rr.cliente,
+                           rr.notas_operador,
+                           (SELECT MAX(tse.event_at)
+                            FROM tracking_status_events tse
+                            WHERE tse.run_id = rr.run_id
+                              AND tse.guia = rr.guia) AS latest_status_date
                     FROM run_results rr
                     JOIN runs r ON r.id = rr.run_id
                     WHERE rr.guia = ?
@@ -342,3 +354,191 @@ class DashboardRepository:
                     (guide, limit),
                 ).fetchall()
             )
+
+    def update_operator_note(self, run_id: int, guia: str, note: str) -> bool:
+        """Persist or clear an operator note for a given (run_id, guia) pair.
+
+        Returns True if at least one row was updated, False otherwise.
+        """
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE run_results SET notas_operador = ? WHERE run_id = ? AND guia = ?",
+                (note, run_id, guia),
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+
+    def export_effi_rows(self, run_id: int) -> list[sqlite3.Row]:
+        """Return only rows where requiere_accion == 'Gestionar con encargado'
+        for Effi CSV export.
+
+        Columns returned: guia, estado_effi_actual, motivo, notas_operador.
+        """
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT guia, estado_effi_actual, motivo, notas_operador
+                    FROM run_results
+                    WHERE run_id = ?
+                      AND requiere_accion = 'Gestionar con encargado'
+                    ORDER BY guia ASC
+                    """,
+                    (run_id,),
+                ).fetchall()
+            )
+
+    def latest_por_recoger_total(self) -> int:
+        """Count of 'Por recoger (INFORMADO)' guides in the most recent run.
+
+        Returns 0 when no runs exist or no matching guides in the latest run.
+        """
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM run_results
+                WHERE run_id = (SELECT MAX(id) FROM runs)
+                  AND estado_propuesto = 'Por recoger (INFORMADO)'
+                """
+            ).fetchone()
+        return int(row["total"]) if row and row["total"] is not None else 0
+
+    def por_recoger_guides_list(self) -> list[sqlite3.Row]:
+        """Return the list of guides currently in 'Por recoger (INFORMADO)'
+        state in the most recent run, with guia, cliente, and requiere_accion."""
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT guia, cliente, requiere_accion
+                    FROM run_results
+                    WHERE run_id = (SELECT MAX(id) FROM runs)
+                      AND estado_propuesto = 'Por recoger (INFORMADO)'
+                    ORDER BY guia ASC
+                    """
+                ).fetchall()
+            )
+
+    def por_recoger_delivery_breakdown(self) -> dict[str, int]:
+        """Breakdown of 'Por recoger (INFORMADO)' guides into delivered vs returned.
+
+        Tracks guides that appeared as 'Por recoger (INFORMADO)' in any run
+        and checks whether they later ended up in a delivery state
+        (ENTREGADA, ENTREGADO) or a return state (DEVUELTO, DEVOLUCION).
+
+        Returns dict with keys:
+          - total_por_recoger: count still in 'Por recoger' in the latest run
+          - delivered: count that transitioned to delivery
+          - returned: count that transitioned to return
+        """
+        with self._connect() as connection:
+            # Total Por recoger in latest run (reuse existing method)
+            total = self.latest_por_recoger_total()
+
+            # Guides that were ever 'Por recoger (INFORMADO)' (distinct)
+            ever_por_recoger = connection.execute(
+                """
+                SELECT DISTINCT guia
+                FROM run_results
+                WHERE estado_propuesto = 'Por recoger (INFORMADO)'
+                """
+            ).fetchall()
+            por_recoger_guides = [row["guia"] for row in ever_por_recoger]
+
+            if not por_recoger_guides:
+                return {"total_por_recoger": total, "delivered": 0, "returned": 0}
+
+            # For each guide that was ever Por recoger, find the latest
+            # estado_propuesto across all runs.
+            delivered = 0
+            returned = 0
+
+            for guia in por_recoger_guides:
+                row = connection.execute(
+                    """
+                    SELECT rr.estado_propuesto, rr.run_id
+                    FROM run_results rr
+                    WHERE rr.guia = ?
+                    ORDER BY rr.run_id DESC
+                    LIMIT 1
+                    """,
+                    (guia,),
+                ).fetchone()
+                if row is None:
+                    continue
+                estado = (row["estado_propuesto"] or "").upper()
+                # Delivery states
+                if "ENTREGAD" in estado:
+                    delivered += 1
+                # Return states
+                elif "DEVOLUCI" in estado or "DEVUELT" in estado:
+                    returned += 1
+                # Still Por recoger → counted in total_por_recoger, not delivered/returned
+
+            return {
+                "total_por_recoger": total,
+                "delivered": delivered,
+                "returned": returned,
+            }
+
+    def por_recoger_detailed_breakdown(self) -> dict:
+        """Returns detailed breakdown of Por recoger guides with actual
+        guide lists for operational verification.
+
+        Classifies every guide that was ever 'Por recoger (INFORMADO)'
+        into one of three groups based on its latest estado_propuesto:
+
+        - delivered: latest state contains ENTREGAD (e.g. ENTREGADA, ENTREGADO)
+        - returned:  latest state contains DEVOLUCI or DEVUELT
+        - pending:   latest state is still Por recoger (INFORMADO)
+
+        Returns:
+            dict with keys:
+              - total_por_recoger (int): count still pending
+              - delivered (list[sqlite3.Row]): guide rows with guia, cliente,
+                carrier, estado_propuesto, requiere_accion, run_id
+              - returned (list[sqlite3.Row]): same structure
+              - pending (list[sqlite3.Row]): same structure
+        """
+        with self._connect() as connection:
+            # Get latest estado_propuesto for every guide that was ever
+            # Por recoger, in a single query.
+            rows = connection.execute(
+                """
+                SELECT rr1.guia, rr1.cliente, rr1.carrier,
+                       rr1.estado_propuesto, rr1.requiere_accion, rr1.run_id
+                FROM run_results rr1
+                WHERE rr1.guia IN (
+                    SELECT DISTINCT guia FROM run_results
+                    WHERE estado_propuesto = 'Por recoger (INFORMADO)'
+                )
+                AND rr1.run_id = (
+                    SELECT MAX(rr2.run_id)
+                    FROM run_results rr2
+                    WHERE rr2.guia = rr1.guia
+                )
+                ORDER BY rr1.guia ASC
+                """
+            ).fetchall()
+
+        delivered: list[sqlite3.Row] = []
+        returned: list[sqlite3.Row] = []
+        pending: list[sqlite3.Row] = []
+
+        for row in rows:
+            estado = (row["estado_propuesto"] or "").upper()
+            if "ENTREGAD" in estado:
+                delivered.append(row)
+            elif "DEVOLUCI" in estado or "DEVUELT" in estado:
+                returned.append(row)
+            elif "POR RECOGER" in estado or "INFORMADO" in estado:
+                pending.append(row)
+            # else: unrecognized final state, excluded
+
+        return {
+            "total_por_recoger": len(pending),
+            "delivered": delivered,
+            "returned": returned,
+            "pending": pending,
+        }

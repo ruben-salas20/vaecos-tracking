@@ -138,6 +138,100 @@ class CarrierMigrationTestCase(unittest.TestCase):
             finally:
                 conn.close()
 
+    # ══════════════════════════════════════════════════════════════════
+    # Task 1.5 — RED: notas_operador migration (idempotent)
+    # ══════════════════════════════════════════════════════════════════
+
+    def test_init_adds_notas_operador_column_on_fresh_db(self) -> None:
+        """RED: init_db() must create the notas_operador column on a new database."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "fresh_notes.db"
+            conn = connect(db)
+            try:
+                init_db(conn)
+                cols = [row["name"] for row in conn.execute("PRAGMA table_info(run_results)")]
+                self.assertIn("notas_operador", cols,
+                              "init_db() must include notas_operador column")
+            finally:
+                conn.close()
+
+    def test_init_migrates_notas_operador_on_legacy_db(self) -> None:
+        """RED: existing DB without notas_operador column must gain it after init_db()."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "legacy_notes.db"
+
+            legacy = sqlite3.connect(str(db))
+            legacy.executescript(
+                """
+                CREATE TABLE runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    started_at TEXT NOT NULL,
+                    finished_at TEXT,
+                    mode TEXT NOT NULL,
+                    total_processed INTEGER DEFAULT 0,
+                    total_changed INTEGER DEFAULT 0,
+                    total_unchanged INTEGER DEFAULT 0,
+                    total_manual_review INTEGER DEFAULT 0,
+                    total_error INTEGER DEFAULT 0
+                );
+                CREATE TABLE run_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id INTEGER NOT NULL,
+                    guia TEXT NOT NULL,
+                    cliente TEXT NOT NULL,
+                    carrier TEXT NOT NULL DEFAULT 'effi',
+                    estado_notion_actual TEXT,
+                    estado_effi_actual TEXT,
+                    estado_propuesto TEXT,
+                    resultado TEXT NOT NULL,
+                    motivo TEXT NOT NULL,
+                    requiere_accion TEXT NOT NULL,
+                    actualizacion_notion TEXT,
+                    error TEXT
+                );
+                INSERT INTO runs (started_at, mode) VALUES ('2026-04-17T10:00:00', 'dry-run');
+                INSERT INTO run_results (run_id, guia, cliente, carrier, resultado, motivo, requiere_accion)
+                VALUES (1, 'B123', 'Acme', 'effi', 'unchanged', 'ok', 'ninguna');
+                """
+            )
+            legacy.commit()
+            legacy.close()
+
+            conn = connect(db)
+            try:
+                init_db(conn)
+                cols = [row["name"] for row in conn.execute("PRAGMA table_info(run_results)")]
+                self.assertIn("notas_operador", cols,
+                              "Legacy DB must gain notas_operador after migration")
+
+                # Verify legacy row still accessible with NULL default
+                row = conn.execute(
+                    "SELECT notas_operador FROM run_results WHERE guia = 'B123'"
+                ).fetchone()
+                self.assertIsNotNone(row)
+                self.assertIsNone(row["notas_operador"],
+                                  "Existing rows default to NULL notas_operador")
+            finally:
+                conn.close()
+
+    def test_notas_operador_migration_is_idempotent(self) -> None:
+        """RED: calling init_db() multiple times must not crash nor duplicate the column."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "idem_notes.db"
+            conn = connect(db)
+            try:
+                init_db(conn)
+                cols1 = [row["name"] for row in conn.execute("PRAGMA table_info(run_results)")]
+                self.assertIn("notas_operador", cols1)
+
+                # Second call must be safe
+                init_db(conn)
+                cols2 = [row["name"] for row in conn.execute("PRAGMA table_info(run_results)")]
+                self.assertEqual(cols1, cols2,
+                                 "Column list must be identical after second init_db()")
+            finally:
+                conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()

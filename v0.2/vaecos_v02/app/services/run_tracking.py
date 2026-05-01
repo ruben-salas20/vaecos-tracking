@@ -167,12 +167,11 @@ def execute_tracking(
                     run_context.today,
                     rules=active_rules,
                     carrier=record.carrier,
+                    notion_estado=record.estado_novedad,
                 )
                 resultado, motivo, accion, estado_propuesto = classify_result_with_cooldown(
                     decision=decision,
                     notion_estado=record.estado_novedad,
-                    fecha_ultimo_seguimiento=record.fecha_ultimo_seguimiento,
-                    today=run_context.today,
                 )
 
                 actualizacion_notion = "No aplica"
