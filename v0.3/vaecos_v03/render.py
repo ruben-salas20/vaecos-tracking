@@ -11,22 +11,46 @@ def layout(title: str, body: str) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{escape(title)} — VAECOS</title>
   <link rel="icon" type="image/png" href="/static/logo.png">
-  <style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap">
+    <style>
+    /* ── Tokens ──────────────────────────────────────── */
+    /* ── VAECOS Design Tokens ─────────────────────────── */
     :root {{
-      --bg:            #f0f2f8;
-      --surface:       #ffffff;
-      --border:        #e2e8f0;
-      --text:          #1e293b;
-      --muted:         #64748b;
-      --primary:       #dc2626;
-      --primary-dark:  #b91c1c;
-      --accent:        #3b82f6;
-      --sidebar-bg:    #0f172a;
-      --sidebar-text:  #e2e8f0;
-      --sidebar-muted: #94a3b8;
-      --shadow-sm:     0 1px 3px rgba(15,23,42,.08), 0 0 0 1px rgba(15,23,42,.04);
-      --shadow:        0 4px 16px rgba(15,23,42,.08), 0 0 0 1px rgba(15,23,42,.04);
-      --radius:        12px;
+      /* brand */
+      --brand:          #dc2626;
+      --brand-strong:   #b91c1c;
+
+      /* surface & layout */
+      --bg:             #f0f2f8;
+      --surface:        #ffffff;
+      --border:         #e2e8f0;
+      --radius:         12px;
+
+      /* text hierarchy */
+      --text:           #1e293b;
+      --muted:          #64748b;
+
+      /* semantic states */
+      --danger:         #b91c1c;
+      --warn:           #d97706;
+      --info:           #4338ca;
+      --success:        #16a34a;
+
+      /* primary maps to brand by default */
+      --primary:        var(--brand);
+      --primary-dark:   var(--brand-strong);
+
+      /* sidebar */
+      --sidebar-bg:     #0f172a;
+      --sidebar-text:   #e2e8f0;
+      --sidebar-muted:  #94a3b8;
+
+      /* elevations */
+      --shadow-sm:      0 1px 3px rgba(15,23,42,.08), 0 0 0 1px rgba(15,23,42,.04);
+      --shadow:         0 4px 16px rgba(15,23,42,.08), 0 0 0 1px rgba(15,23,42,.04);
     }}
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{
@@ -101,10 +125,18 @@ def layout(title: str, body: str) -> str:
     .brand-sub {{ color: var(--sidebar-muted); font-size: .75rem; margin-top: 2px; letter-spacing: .02em; }}
     .sidebar-nav {{ padding: 14px 10px; flex: 1; display: flex; flex-direction: column; gap: 18px; }}
     .nav-group {{ display: flex; flex-direction: column; gap: 2px; }}
+    .nav-group + .nav-group {{
+      border-top: 1px solid rgba(255,255,255,.06);
+      padding-top: 14px;
+    }}
     .nav-label {{
       color: var(--sidebar-muted); font-size: .68rem; font-weight: 700;
       letter-spacing: .1em; text-transform: uppercase;
       padding: 0 10px 6px;
+      display: flex; align-items: center; gap: 6px;
+    }}
+    .nav-label svg {{
+      width: 13px; height: 13px; opacity: .55; flex-shrink: 0;
     }}
     .nav a {{
       color: var(--sidebar-text); padding: 8px 12px; border-radius: 8px;
@@ -144,7 +176,7 @@ def layout(title: str, body: str) -> str:
       background: var(--surface); color: var(--text);
       border: 1px solid var(--border); box-shadow: var(--shadow-sm);
     }}
-    .button.ghost:hover {{ background: #f8fafc; color: var(--text); }}
+    .button.ghost:hover {{ background: #f1f5f9; color: var(--text); border-color: var(--primary); }}
     .button.secondary {{ background: #1e293b; }}
     .button.secondary:hover {{ background: #0f172a; }}
 
@@ -152,21 +184,23 @@ def layout(title: str, body: str) -> str:
     .cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(155px,1fr)); gap: 12px; margin: 20px 0; }}
     .card {{
       background: var(--surface); border-radius: var(--radius);
-      padding: 16px 18px; box-shadow: var(--shadow-sm); border: 1px solid var(--border);
+      padding: 16px 18px; box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--border);
     }}
     .card-label {{
       color: var(--muted); font-size: .72rem; font-weight: 600;
       text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px;
     }}
     .card-value {{ font-size: 1.6rem; font-weight: 700; letter-spacing: -.03em; line-height: 1; }}
-    .card.danger {{ border-color: #fca5a5; background: linear-gradient(135deg,#fff5f5 0%,#fff 55%); }}
-    .card.danger .card-value {{ color: #dc2626; }}
-    .card.ok    {{ border-color: #86efac; background: linear-gradient(135deg,#f0fdf4 0%,#fff 55%); }}
-    .card.ok    .card-value {{ color: #16a34a; }}
-    .card.warn  {{ border-color: #fde68a; background: linear-gradient(135deg,#fffbeb 0%,#fff 55%); }}
-    .card.warn  .card-value {{ color: #d97706; }}
-    .card.info  {{ border-color: #bfdbfe; background: linear-gradient(135deg,#eff6ff 0%,#fff 55%); }}
-    .card.info  .card-value {{ color: #2563eb; }}
+    .card.danger {{ background: #fef2f2; border-color: #fecaca; border-left-color: var(--danger); }}
+    .card.danger .card-value {{ color: var(--danger); }}
+    .card.ok    {{ background: #f0fdf4; border-color: #bbf7d0; border-left-color: var(--success); }}
+    .card.ok    .card-value {{ color: var(--success); }}
+    .card.warn  {{ background: #fffbeb; border-color: #fde68a; border-left-color: var(--warn); }}
+    .card.warn  .card-value {{ color: var(--warn); }}
+    .card.info  {{ background: #eef2ff; border-color: #c7d2fe; border-left-color: var(--info); }}
+    .card.info  .card-value {{ color: var(--info); }}
 
     /* ── Panel ────────────────────────────────────────── */
     .panel {{
@@ -199,7 +233,7 @@ def layout(title: str, body: str) -> str:
     }}
     td {{ padding: 10px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }}
     tr:last-child td {{ border-bottom: none; }}
-    tbody tr:hover td {{ background: #f8faff; transition: background .1s; }}
+    tbody tr:hover td {{ background: #eef2ff; transition: background .1s; }}
     .cell-trunc {{ max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
 
     /* ── Alerts ───────────────────────────────────────── */
@@ -209,7 +243,7 @@ def layout(title: str, body: str) -> str:
       background: #fff7ed; border-color: #fed7aa; color: #9a3412;
     }}
     .alert.ok   {{ background: #f0fdf4; border-color: #86efac; color: #166534; }}
-    .alert.info {{ background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }}
+    .alert.info {{ background: #eef2ff; border-color: #c7d2fe; color: #3730a3; }}
 
     /* ── Pills ────────────────────────────────────────── */
     .pill {{
@@ -217,7 +251,7 @@ def layout(title: str, body: str) -> str:
       border-radius: 999px; font-size: .75rem; font-weight: 600; white-space: nowrap;
       background: #eef2ff; color: #4338ca;
     }}
-    .pill-changed  {{ background: #dbeafe; color: #1d4ed8; }}
+    .pill-changed  {{ background: #e0e7ff; color: #3730a3; }}
     .pill-unchanged {{ background: #f1f5f9; color: #475569; }}
     .pill-manual   {{ background: #fef9c3; color: #92400e; }}
     .pill-parse    {{ background: #ffedd5; color: #9a3412; }}
@@ -313,26 +347,51 @@ def layout(title: str, body: str) -> str:
           <span class="sidebar-toggle-label">Menu</span>
         </button>
         <div class="nav-group">
-          <div class="nav-label">Operaciones</div>
+          <div class="nav-label">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="8" cy="8" r="2.5"/><path d="M13 8a5 5 0 1 0-10 0"/>
+              <line x1="8" y1="3" x2="8" y2="5.5"/><line x1="8" y1="10.5" x2="8" y2="13"/>
+            </svg>
+            Operaciones
+          </div>
           <nav class="nav">
             <a class="nav-primary" href="/attention" title="Requiere atencion">Requiere atencion</a>
             <a href="/" title="Resumen">Resumen</a>
           </nav>
         </div>
         <div class="nav-group">
-          <div class="nav-label">Historial</div>
+          <div class="nav-label">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="3" cy="4" r="1.5"/><circle cx="8" cy="4" r="1.5"/><circle cx="13" cy="4" r="1.5"/>
+              <circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/>
+              <circle cx="3" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="13" cy="12" r="1.5"/>
+            </svg>
+            Historial
+          </div>
           <nav class="nav">
             <a href="/runs" title="Corridas">Corridas</a>
           </nav>
         </div>
         <div class="nav-group">
-          <div class="nav-label">Inteligencia</div>
+          <div class="nav-label">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="10" width="3.5" height="4" rx=".5"/>
+              <rect x="6.25" y="5" width="3.5" height="9" rx=".5"/>
+              <rect x="10.5" y="2" width="3.5" height="12" rx=".5"/>
+            </svg>
+            Inteligencia
+          </div>
           <nav class="nav">
             <a href="/analytics" title="Analytics">Analytics</a>
           </nav>
         </div>
         <div class="nav-group">
-          <div class="nav-label">Acciones</div>
+          <div class="nav-label">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="4,2 14,8 4,14"/>
+            </svg>
+            Acciones
+          </div>
           <nav class="nav">
             <a href="/run/new" title="Nueva corrida">Nueva corrida</a>
             <a href="/rules" title="Reglas">Reglas</a>

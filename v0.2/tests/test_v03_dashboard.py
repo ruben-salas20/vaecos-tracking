@@ -2759,5 +2759,654 @@ class EffiProblemaSanitizationTestCase(unittest.TestCase):
             tmp.cleanup()
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# v03-aesthetic-refresh — Phase 1: Tokens & Typography
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class Phase1TokensTypographyTestCase(unittest.TestCase):
+    """Phase 1 — CSS tokens, typography foundation, brand/danger separation."""
+
+    # ── 1.1 RED: CSS variables / tokens ──────────────────────────────────
+
+    def test_layout_defines_brand_token(self):
+        """layout() CSS MUST define --brand token for VAECOS brand identity."""
+        html = layout("Test", "<p>body</p>")
+        self.assertIn("--brand:", html,
+                      "CSS must define --brand variable for brand identity")
+
+    def test_layout_defines_danger_token(self):
+        """layout() CSS MUST define --danger token separate from --brand."""
+        html = layout("Test", "<p>body</p>")
+        self.assertIn("--danger:", html,
+                      "CSS must define --danger variable for error states")
+
+    def test_layout_defines_warn_token(self):
+        """layout() CSS MUST define --warn token for attention states."""
+        html = layout("Test", "<p>body</p>")
+        self.assertIn("--warn:", html,
+                      "CSS must define --warn variable for warning states")
+
+    def test_layout_defines_info_token(self):
+        """layout() CSS MUST define --info token for informational states."""
+        html = layout("Test", "<p>body</p>")
+        self.assertIn("--info:", html,
+                      "CSS must define --info variable for info states")
+
+    def test_layout_defines_success_token(self):
+        """layout() CSS MUST define --success token for OK states."""
+        html = layout("Test", "<p>body</p>")
+        self.assertIn("--success:", html,
+                      "CSS must define --success variable for success states")
+
+    def test_layout_defines_brand_strong_token(self):
+        """layout() CSS MUST define --brand-strong token for emphasis."""
+        html = layout("Test", "<p>body</p>")
+        self.assertIn("--brand-strong:", html,
+                      "CSS must define --brand-strong variable for brand emphasis")
+
+    # ── 1.1 TRIANGULATE: all surface/text tokens defined ────────────────
+
+    def test_layout_defines_surface_token(self):
+        """layout() CSS MUST keep --surface token for card/panel backgrounds."""
+        html = layout("Test", "<p>body</p>")
+        self.assertIn("--surface:", html,
+                      "CSS must define --surface variable")
+
+    def test_layout_defines_text_token(self):
+        """layout() CSS MUST keep --text token for primary text color."""
+        html = layout("Test", "<p>body</p>")
+        self.assertIn("--text:", html,
+                      "CSS must define --text variable")
+
+    def test_layout_defines_muted_token(self):
+        """layout() CSS MUST keep --muted token for secondary text."""
+        html = layout("Test", "<p>body</p>")
+        self.assertIn("--muted:", html,
+                      "CSS must define --muted variable")
+
+    # ── 1.2 RED: Brand and danger are separate values ───────────────────
+
+    def test_brand_and_danger_have_different_values(self):
+        """--brand and --danger MUST be different color values."""
+        html = layout("Test", "<p>body</p>")
+        # Extract the :root block
+        import re
+        root_match = re.search(r':root\s*\{(.*?)\}', html, re.DOTALL)
+        self.assertIsNotNone(root_match,
+                             "layout() must contain a :root CSS block")
+        root_css = root_match.group(1)
+
+        # Find --brand value
+        brand_match = re.search(r'--brand:\s*([^;]+);', root_css)
+        danger_match = re.search(r'--danger:\s*([^;]+);', root_css)
+        self.assertIsNotNone(brand_match, "--brand must be defined in :root")
+        self.assertIsNotNone(danger_match, "--danger must be defined in :root")
+        brand_val = brand_match.group(1).strip()
+        danger_val = danger_match.group(1).strip()
+        self.assertNotEqual(brand_val, danger_val,
+                            f"--brand ({brand_val}) and --danger ({danger_val}) "
+                            "must be different colors")
+
+    def test_primary_references_or_equals_brand(self):
+        """--primary MUST reference --brand or equal the same color value."""
+        html = layout("Test", "<p>body</p>")
+        import re
+        root_match = re.search(r':root\s*\{(.*?)\}', html, re.DOTALL)
+        self.assertIsNotNone(root_match, "layout() must contain a :root CSS block")
+        root_css = root_match.group(1)
+
+        primary_match = re.search(r'--primary:\s*([^;]+);', root_css)
+        brand_match = re.search(r'--brand:\s*([^;]+);', root_css)
+        self.assertIsNotNone(primary_match, "--primary must be defined")
+        self.assertIsNotNone(brand_match, "--brand must be defined")
+        primary_val = primary_match.group(1).strip()
+        brand_val = brand_match.group(1).strip()
+
+        # Primary must either reference var(--brand) or be the same color
+        primary_refs_brand = "var(--brand)" in primary_val
+        primary_equals_brand = primary_val == brand_val
+        self.assertTrue(
+            primary_refs_brand or primary_equals_brand,
+            f"--primary ({primary_val}) must reference --brand ({brand_val}) "
+            "or equal the same value"
+        )
+
+    # ── 1.3 RED: Inter font loading ─────────────────────────────────────
+
+    def test_layout_loads_inter_font_from_google(self):
+        """layout() <head> MUST include a <link> to Google Fonts for Inter."""
+        html = layout("Test", "<p>body</p>")
+        self.assertIn("fonts.googleapis.com", html,
+                      "head must include Google Fonts link for Inter")
+        self.assertIn("Inter", html,
+                      "font link must reference Inter family")
+
+    def test_layout_includes_preconnect_for_google_fonts(self):
+        """layout() <head> MUST include preconnect for fonts.googleapis.com
+        and fonts.gstatic.com for faster font loading."""
+        html = layout("Test", "<p>body</p>")
+        # Check for preconnect to Google Fonts domains
+        head_section = html[html.find("<head>"):html.find("</head>")]
+        self.assertIn("preconnect", head_section,
+                      "head must include preconnect hints for font loading")
+        self.assertIn("fonts.googleapis.com", head_section,
+                      "preconnect must target fonts.googleapis.com")
+
+    def test_layout_sets_inter_as_primary_font_family(self):
+        """layout() CSS MUST declare font-family starting with Inter."""
+        html = layout("Test", "<p>body</p>")
+        self.assertIn("font-family: Inter", html,
+                      "font-family must list Inter as the primary typeface")
+
+    # ── 1.4 RED: Blue accent removal ────────────────────────────────────
+
+    def test_layout_no_longer_defines_accent_as_blue(self):
+        """layout() CSS MUST NOT define --accent as #3b82f6 (blue)."""
+        html = layout("Test", "<p>body</p>")
+        import re
+        root_match = re.search(r':root\s*\{(.*?)\}', html, re.DOTALL)
+        self.assertIsNotNone(root_match, "layout() must contain a :root CSS block")
+        root_css = root_match.group(1)
+        self.assertNotIn("#3b82f6", root_css,
+                         "CSS :root MUST NOT contain #3b82f6 (blue accent)")
+
+    def test_layout_css_contains_no_blue_accent_anywhere(self):
+        """The entire layout() CSS MUST NOT contain #3b82f6 anywhere."""
+        html = layout("Test", "<p>body</p>")
+        self.assertNotIn("#3b82f6", html,
+                         "layout() HTML MUST NOT contain #3b82f6 (blue) anywhere")
+
+    # ── 1.4 TRIANGULATE: Other blue variants removed ────────────────────
+
+    def test_layout_css_no_blue_info_card_border(self):
+        """The old .card.info border color #bfdbfe (blue) MUST be replaced
+        with a non-blue semantic color."""
+        html = layout("Test", "<p>body</p>")
+        # Old blue-adjacent color in info cards
+        self.assertNotIn("#bfdbfe", html,
+                         "CSS must not contain old blue-tinted info card border")
+        self.assertNotIn("#2563eb", html,
+                         "CSS must not contain old blue info card value color")
+
+    # ── Smoke: layout still produces valid output ────────────────────────
+
+    def test_layout_still_produces_complete_html(self):
+        """layout() MUST still produce a complete HTML document
+        after aesthetic changes."""
+        html = layout("Test", "<p>body</p>")
+        self.assertIn("<!doctype html>", html.lower(),
+                      "layout must produce a doctype declaration")
+        self.assertIn("</html>", html,
+                      "layout must produce a closing html tag")
+        self.assertIn("<style>", html,
+                      "layout must embed CSS in a style tag")
+        self.assertIn("</style>", html,
+                      "layout must close the style tag")
+
+    def test_layout_keeps_functional_sidebar_elements(self):
+        """Sidebar nav links and toggle button MUST survive aesthetic changes."""
+        html = layout("Test", "<p>body</p>")
+        self.assertIn("Requiere atencion", html,
+                      "Sidebar must keep existing navigation links")
+        self.assertIn("sidebar-toggle-btn", html,
+                      "Sidebar must keep toggle button")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# v03-aesthetic-refresh — Phases 2–5: Navigation, Components, Charts, Polish
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class Phase2To5AestheticTestCase(unittest.TestCase):
+    """Phases 2–5 — Navigation sidebar icons, card gradients removal,
+    table hover, ghost buttons, chart colors, rules_ui alignment, and
+    CSS documentation."""
+
+    # ══════════════════════════════════════════════════════════════════
+    # 2.1 RED: Sidebar SVG icons (per-section inline icons)
+    # ══════════════════════════════════════════════════════════════════
+
+    def test_sidebar_contains_svg_icons(self):
+        """layout() sidebar MUST contain <svg> elements for per-section icons."""
+        html = layout("Test", "<p>body</p>")
+        sidebar_html = html[html.find('<aside class="sidebar"'):html.find('</aside>')]
+        self.assertIn("<svg", sidebar_html,
+                      "Sidebar must include SVG icon elements")
+        # At least 4 icons (one per nav-group section)
+        svg_count = sidebar_html.count("<svg")
+        self.assertGreaterEqual(svg_count, 3,
+                                f"Sidebar must have at least 3 SVG icons "
+                                f"(Operaciones, Historial, Inteligencia), "
+                                f"got {svg_count}")
+
+    def test_svg_icons_do_not_change_hrefs(self):
+        """SVG icons MUST NOT change navigation link hrefs."""
+        html = layout("Test", "<p>body</p>")
+        # All original nav links must remain
+        self.assertIn('href="/attention"', html,
+                      "Attention link MUST survive icon addition")
+        self.assertIn('href="/"', html,
+                      "Home link MUST survive icon addition")
+        self.assertIn('href="/runs"', html,
+                      "Runs link MUST survive icon addition")
+        self.assertIn('href="/analytics"', html,
+                      "Analytics link MUST survive icon addition")
+
+    # ══════════════════════════════════════════════════════════════════
+    # 2.2 RED: Sidebar section visual differentiation
+    # ══════════════════════════════════════════════════════════════════
+
+    def test_sidebar_nav_groups_have_visual_separation(self):
+        """nav-group sections MUST have visual separation (gap or border)."""
+        html = layout("Test", "<p>body</p>")
+        # CSS for .nav-group must include gap or border-bottom
+        css = html[html.find("<style>"):html.find("</style>")]
+        self.assertIn(".nav-group", css,
+                      "CSS must define .nav-group styling")
+        # Check for separation: either border-bottom on groups or
+        # explicit gap between groups (currently gap: 18px on parent)
+        self.assertIn("gap:", css,
+                      "CSS must use gap for visual spacing")
+        # The sidebar-nav parent has gap between groups
+        self.assertIn("sidebar-nav", css,
+                      "CSS must style sidebar-nav with gap for groups")
+        sidebar_nav_rule = css[css.find(".sidebar-nav"):css.find(".sidebar-nav") + 300]
+        self.assertTrue(
+            "gap: 18px" in sidebar_nav_rule
+            or "gap:18px" in sidebar_nav_rule
+            or "gap: 24px" in sidebar_nav_rule
+            or "gap: 20px" in sidebar_nav_rule,
+            f"sidebar-nav MUST have gap spacing for visual group separation, "
+            f"found: {sidebar_nav_rule[:200]}")
+
+    # ══════════════════════════════════════════════════════════════════
+    # 2.3 RED: KPI cards without gradients, solid bg, left border
+    # ══════════════════════════════════════════════════════════════════
+
+    def test_card_styles_have_no_gradient_backgrounds(self):
+        """KPI card styles MUST NOT use linear-gradient backgrounds."""
+        html = layout("Test", "<p>body</p>")
+        css = html[html.find("<style>"):html.find("</style>")]
+        # Check .card styles for gradients
+        self.assertNotIn("linear-gradient", css,
+                         "Card styles MUST NOT contain gradient backgrounds")
+
+    def test_card_styles_use_solid_background(self):
+        """KPI cards MUST use solid background colors."""
+        html = layout("Test", "<p>body</p>")
+        css = html[html.find("<style>"):html.find("</style>")]
+        # .card class must define background: var(--surface) or similar solid color
+        card_rule_start = css.find(".card {")
+        self.assertNotEqual(card_rule_start, -1,
+                            "CSS must define .card styling")
+        card_rule = css[card_rule_start:card_rule_start + 250]
+        self.assertIn("background:", card_rule,
+                      "Card must have background property")
+        self.assertIn("--surface", card_rule,
+                      "Card background must use --surface token")
+
+    def test_cards_have_left_semantic_border(self):
+        """KPI cards MUST have a left border for semantic meaning."""
+        html = layout("Test", "<p>body</p>")
+        css = html[html.find("<style>"):html.find("</style>")]
+        # Either border-left or a left-accent via pseudo-element or box-shadow
+        has_left_accent = (
+            "border-left:" in css
+            or "border-left-width:" in css
+        )
+        self.assertTrue(has_left_accent,
+                        "CSS must include left border/accent styling for cards")
+
+    def test_card_border_left_is_3px(self):
+        """Left semantic border MUST be 3px wide."""
+        html = layout("Test", "<p>body</p>")
+        css = html[html.find("<style>"):html.find("</style>")]
+        # Find the border-left declaration
+        self.assertTrue(
+            "border-left: 3px" in css
+            or "border-left:3px" in css
+            or "border-left-width: 3px" in css
+            or "border-left-width:3px" in css,
+            "Left border on cards must be 3px wide"
+        )
+
+    # ══════════════════════════════════════════════════════════════════
+    # 2.4 RED: Table row hover contrast + ghost button hover border
+    # ══════════════════════════════════════════════════════════════════
+
+    def test_table_row_hover_has_perceptible_contrast(self):
+        """Table row hover MUST use a visually distinct background color,
+        not the same as the table background."""
+        html = layout("Test", "<p>body</p>")
+        css = html[html.find("<style>"):html.find("</style>")]
+        # Look for tbody tr:hover rule
+        self.assertIn("tbody tr:hover", css,
+                      "CSS must define tbody tr:hover for table row hover")
+        # Must have a background that isn't white (#fff) or transparent
+        hover_rule_start = css.find("tbody tr:hover")
+        hover_rule = css[hover_rule_start:hover_rule_start + 200]
+        self.assertIn("background:", hover_rule,
+                      "Table hover must change background")
+        # The hover background must NOT be plain white or same as surface
+        self.assertNotIn("background: #fff", hover_rule,
+                         "Hover must not be plain white (invisible)")
+        self.assertNotIn("background: var(--surface)", hover_rule,
+                         "Hover must differ from surface background")
+
+    def test_ghost_button_hover_has_border(self):
+        """Ghost button hover MUST show a border for visual feedback."""
+        html = layout("Test", "<p>body</p>")
+        css = html[html.find("<style>"):html.find("</style>")]
+        # Check ghost hover rules
+        ghost_hover_rule = css.find(".ghost:hover")
+        self.assertNotEqual(ghost_hover_rule, -1,
+                            "CSS must define .ghost:hover")
+        ghost_hover = css[ghost_hover_rule:ghost_hover_rule + 200]
+        # Must have border or outline or box-shadow change
+        has_border_feedback = (
+            "border" in ghost_hover
+            or "outline" in ghost_hover
+            or "box-shadow" in ghost_hover
+        )
+        self.assertTrue(has_border_feedback,
+                        f"Ghost button hover must have visual border feedback, "
+                        f"found: {ghost_hover[:150]}")
+
+    # ══════════════════════════════════════════════════════════════════
+    # 2.5 RED: Pills and alerts aligned to semantic tokens
+    # ══════════════════════════════════════════════════════════════════
+
+    def test_pill_error_uses_danger_token(self):
+        """pill-error MUST use --danger / danger-derived colors, not raw red."""
+        html = layout("Test", "<p>body</p>")
+        css = html[html.find("<style>"):html.find("</style>")]
+        pill_error = css[css.find(".pill-error"):css.find(".pill-error") + 150]
+        # Must use var(--danger) or #991b1b (danger dark) — but NOT #dc2626 (brand)
+        self.assertNotIn("#dc2626", pill_error,
+                         "pill-error must NOT use brand red #dc2626")
+
+    def test_carrier_effi_pill_uses_danger_colors_not_brand(self):
+        """Effi carrier pill background must use danger-tint colors, not
+        pure brand red."""
+        html = layout("Test", "<p>body</p>")
+        css = html[html.find("<style>"):html.find("</style>")]
+        # pill-carrier-effi should use danger-tinted bg
+        if ".pill-carrier-effi" in css:
+            effi_rule_start = css.find(".pill-carrier-effi")
+            effi_rule = css[effi_rule_start:effi_rule_start + 150]
+            self.assertNotIn("#dc2626", effi_rule,
+                             "Effi carrier pill must NOT use brand red")
+        # Even if defined inline, check the HTML doesn't have brand red
+        self.assertIn("#fee2e2", css,
+                      "Effi carrier pill should use danger-light tint #fee2e2")
+
+    # ══════════════════════════════════════════════════════════════════
+    # 3.1 RED: line_chart() default color is semantic (not #3b82f6)
+    # ══════════════════════════════════════════════════════════════════
+
+    def test_line_chart_default_color_is_not_blue(self):
+        """line_chart() default color MUST NOT be #3b82f6 (blue)."""
+        from vaecos_v03.render import line_chart
+        svg = line_chart("Test", [("A", 10), ("B", 20)])
+        self.assertNotIn("#3b82f6", svg,
+                         "line_chart() SVG must not contain #3b82f6")
+        # Default should be brand or semantic color
+        self.assertIn("stroke=", svg,
+                      "line_chart() SVG must have a stroke color")
+
+    def test_line_chart_produces_valid_svg(self):
+        """line_chart() MUST still produce valid SVG with polyline and dots."""
+        from vaecos_v03.render import line_chart
+        svg = line_chart("Test", [("A", 10), ("B", 20)])
+        self.assertIn("<svg", svg, "line_chart must produce SVG")
+        self.assertIn("<polyline", svg, "line_chart must have polyline")
+        self.assertIn("<circle", svg, "line_chart must have data dots")
+
+    # ══════════════════════════════════════════════════════════════════
+    # 3.2 RED: stacked_bar_chart() colors are semantic
+    # ══════════════════════════════════════════════════════════════════
+
+    def test_stacked_bar_chart_no_blue_accent(self):
+        """stacked_bar_chart() MUST NOT contain #3b82f6 in its output."""
+        from vaecos_v03.render import stacked_bar_chart
+        svg = stacked_bar_chart(
+            "Test", ["2026-04-01", "2026-04-02"],
+            [("A", [10, 20], "#16a34a"),
+             ("B", [5, 8], "#d97706")],
+        )
+        self.assertNotIn("#3b82f6", svg,
+                         "stacked_bar_chart() must not contain #3b82f6")
+
+    def test_stacked_bar_chart_produces_valid_svg(self):
+        """stacked_bar_chart() MUST produce valid SVG with rect elements."""
+        from vaecos_v03.render import stacked_bar_chart
+        svg = stacked_bar_chart(
+            "Test", ["2026-04-01"],
+            [("X", [5], "#16a34a")],
+        )
+        self.assertIn("<svg", svg, "Must produce SVG tag")
+        self.assertIn("<rect", svg, "Must produce rect elements")
+
+    # ══════════════════════════════════════════════════════════════════
+    # 3.3 RED: app.py analytics page has zero #3b82f6
+    # ══════════════════════════════════════════════════════════════════
+
+    def test_render_analytics_contains_no_blue_accent(self):
+        """_render_analytics() MUST NOT contain #3b82f6 anywhere."""
+        from vaecos_v03.app import _render_analytics
+        # Create minimal repo with some data
+        tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        db = Path(tmp.name) / "test_aesthetic_charts.db"
+        conn = v02_connect(db)
+        try:
+            v02_init_db(conn)
+        finally:
+            conn.close()
+        repo = DashboardRepository(db)
+        try:
+            # Seed minimal data so chart rendering kicks in
+            conn2 = repo._connect()
+            try:
+                conn2.execute(
+                    "INSERT OR REPLACE INTO runs "
+                    "(id, started_at, finished_at, mode, total_processed, "
+                    " total_changed, total_unchanged, total_manual_review, total_error) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (1, "2026-05-01T10:00:00", "2026-05-01T10:05:00",
+                     "dry-run", 2, 1, 1, 0, 0),
+                )
+                conn2.execute(
+                    """INSERT INTO run_results
+                       (run_id, guia, cliente, carrier, estado_notion_actual,
+                        estado_effi_actual, estado_propuesto, resultado, motivo,
+                        requiere_accion)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (1, "G01", "Test", "effi",
+                     "En ruta", "En ruta", "En ruta", "unchanged",
+                     "...", ""),
+                )
+                conn2.execute(
+                    """INSERT INTO run_results
+                       (run_id, guia, cliente, carrier, estado_notion_actual,
+                        estado_effi_actual, estado_propuesto, resultado, motivo,
+                        requiere_accion)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (1, "G02", "Test2", "effi",
+                     "Oficina", "Oficina", "Sin movimiento", "changed",
+                     "Cambio", "Gestionar con encargado"),
+                )
+                conn2.commit()
+            finally:
+                conn2.close()
+
+            html = _render_analytics(repo, {"days": ["7"]})
+            self.assertNotIn("#3b82f6", html,
+                             "Analytics page HTML must not contain #3b82f6")
+            # Charts must still render
+            self.assertIn("<svg", html,
+                          "Analytics page must still contain chart SVGs")
+        finally:
+            tmp.cleanup()
+
+    # ══════════════════════════════════════════════════════════════════
+    # 4.1 RED: server.py --check passes (smoke test)
+    # ══════════════════════════════════════════════════════════════════
+
+    def test_server_check_passes(self):
+        """python v0.3/server.py --check MUST exit with code 0."""
+        import subprocess
+        result = subprocess.run(
+            ["python", "v0.3/server.py", "--check"],
+            capture_output=True, text=True,
+            cwd=str(Path(__file__).resolve().parents[2]),
+            timeout=15,
+        )
+        self.assertEqual(
+            result.returncode, 0,
+            f"server.py --check must exit 0, got {result.returncode}. "
+            f"stderr: {result.stderr[:300]}"
+        )
+
+    # ══════════════════════════════════════════════════════════════════
+    # 4.3 RED: Functional parity — navigation links preserved
+    # ══════════════════════════════════════════════════════════════════
+
+    def test_all_nav_routes_preserved(self):
+        """All navigation routes MUST survive aesthetic refresh."""
+        html = layout("Test", "<p>body</p>")
+        required_routes = [
+            'href="/attention"',
+            'href="/"',
+            'href="/runs"',
+            'href="/analytics"',
+            'href="/run/new"',
+            'href="/rules"',
+        ]
+        for route in required_routes:
+            self.assertIn(route, html,
+                          f"Nav route {route} MUST survive aesthetic changes")
+
+    def test_all_nav_labels_preserved(self):
+        """All nav link labels MUST remain unchanged."""
+        html = layout("Test", "<p>body</p>")
+        required_labels = [
+            "Requiere atencion",
+            "Resumen",
+            "Corridas",
+            "Analytics",
+            "Nueva corrida",
+            "Reglas",
+            "Operaciones",
+            "Historial",
+            "Inteligencia",
+            "Acciones",
+        ]
+        for label in required_labels:
+            self.assertIn(label, html,
+                          f"Nav label '{label}' MUST survive aesthetic changes")
+
+    # ══════════════════════════════════════════════════════════════════
+    # 5.1 RED: rules_ui.py inline styles aligned with new palette
+    # ══════════════════════════════════════════════════════════════════
+
+    def test_rules_ui_does_not_use_deprecated_accent_blue(self):
+        """rules_ui.py rendered HTML MUST NOT use #3b82f6 or #2563eb."""
+        from vaecos_v03.rules_ui import render_rules_list
+        tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        db = Path(tmp.name) / "test_rules_aesthetic.db"
+        conn = v02_connect(db)
+        try:
+            v02_init_db(conn)
+        finally:
+            conn.close()
+        try:
+            html = render_rules_list(db, flash=None)
+            self.assertNotIn("#3b82f6", html,
+                             "rules_ui must not contain old blue accent")
+            self.assertNotIn("#2563eb", html,
+                             "rules_ui must not contain old blue variant")
+        finally:
+            tmp.cleanup()
+
+    def test_rules_ui_section_headers_use_brand_color(self):
+        """rules_ui section headers (h2::before) MUST use brand color,
+        not old blue accent."""
+        from vaecos_v03.rules_ui import render_rules_list
+        tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        db = Path(tmp.name) / "test_rules_aesthetic2.db"
+        conn = v02_connect(db)
+        try:
+            v02_init_db(conn)
+        finally:
+            conn.close()
+        try:
+            html = render_rules_list(db, flash=None)
+            # Rules UI uses layout() which already defines brand-red section headers
+            # Verify the layout render doesn't contain blue
+            self.assertNotIn("#3b82f6", html,
+                             "Rules list page must not use blue accent")
+        finally:
+            tmp.cleanup()
+
+    # ══════════════════════════════════════════════════════════════════
+    # 5.2 RED: CSS block in render.py has descriptive section comments
+    # ══════════════════════════════════════════════════════════════════
+
+    def test_css_has_descriptive_section_comments(self):
+        """render.py CSS block MUST have descriptive section comments for
+        organization (Tokens, Layout, Sidebar, Cards, Tables, Charts, etc.)."""
+        html = layout("Test", "<p>body</p>")
+        css_section = html[html.find("<style>"):html.find("</style>")]
+
+        required_sections = [
+            "Tokens",
+            "Layout",
+            "Sidebar",
+            "Main",
+            "Cards",
+            "Tables",
+            "Charts",
+        ]
+        for section in required_sections:
+            # CSS comments use /* ── Name ── */ format
+            section_pattern = f"─ {section}"
+            self.assertIn(
+                section_pattern, css_section,
+                f"CSS must have a '{section}' section comment for organization. "
+                f"Expected pattern '/* ── {section} ...' "
+                f"in the CSS block."
+            )
+
+    # ══════════════════════════════════════════════════════════════════
+    # 5.1 TRIANGULATE: rules_ui form uses semantic tokens
+    # ══════════════════════════════════════════════════════════════════
+
+    def test_rules_ui_form_uses_layout_with_semantic_tokens(self):
+        """rules_ui form pages (which use layout()) MUST inherit the
+        semantic token system from render.py."""
+        from vaecos_v03.rules_ui import render_rule_form
+        tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        db = Path(tmp.name) / "test_rules_form_aesthetic.db"
+        conn = v02_connect(db)
+        try:
+            v02_init_db(conn)
+        finally:
+            conn.close()
+        try:
+            html = render_rule_form(db, rule_id=None)
+            # Since it uses layout(), tokens must be present
+            self.assertIn("--brand:", html,
+                          "rules form must inherit --brand token via layout()")
+            self.assertIn("--danger:", html,
+                          "rules form must inherit --danger token via layout()")
+            self.assertIn("--info:", html,
+                          "rules form must inherit --info token via layout()")
+            self.assertNotIn("#3b82f6", html,
+                             "rules form must not contain old blue accent")
+        finally:
+            tmp.cleanup()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -783,12 +783,18 @@ def _render_analytics(repo: DashboardRepository, query: dict[str, list[str]]) ->
     body += h("Salud de las corridas")
     summary_rows = repo.runs_summary_by_day(days=days)
     days_axis = [str(row["day"]) for row in summary_rows]
+    # Semantic chart palette (no blue #3b82f6)
+    _C_SILVER = "#cbd5e1"
+    _C_INFO   = "#4338ca"
+    _C_WARN   = "#d97706"
+    _C_PARSE  = "#ea580c"
+    _C_DANGER = "#dc2626"
     series = [
-        ("Sin cambios", [int(r["unchanged"] or 0) for r in summary_rows], "#cbd5e1"),
-        ("Cambios", [int(r["changed"] or 0) for r in summary_rows], "#3b82f6"),
-        ("Revision manual", [int(r["manual_review"] or 0) for r in summary_rows], "#f59e0b"),
-        ("Parse error", [int(r["parse_error"] or 0) for r in summary_rows], "#fb923c"),
-        ("Error", [int(r["error"] or 0) for r in summary_rows], "#dc2626"),
+        ("Sin cambios", [int(r["unchanged"] or 0) for r in summary_rows], _C_SILVER),
+        ("Cambios", [int(r["changed"] or 0) for r in summary_rows], _C_INFO),
+        ("Revision manual", [int(r["manual_review"] or 0) for r in summary_rows], _C_WARN),
+        ("Parse error", [int(r["parse_error"] or 0) for r in summary_rows], _C_PARSE),
+        ("Error", [int(r["error"] or 0) for r in summary_rows], _C_DANGER),
     ]
     body += stacked_bar_chart(
         f"Resultados por dia ({days} dias)",
