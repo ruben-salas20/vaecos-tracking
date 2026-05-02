@@ -295,5 +295,5 @@ Los ítems son independientes entre sí (salvo M4 que requiere migración de BD 
 ## Referencias
 
 - `AGENTS.md` — Restricciones operativas del sistema
-- `checklist.md` — Estado actual de componentes
+- `docs/checklist.md` — Estado actual de componentes
 - Commit: `c527310` — "fix tracking rule handling and pause web rules editor" (contexto de M1)

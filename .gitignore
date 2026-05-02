@@ -9,3 +9,10 @@ v0.2/updates/
 backups/
 releases/
 .claude/
+.agents/
+.atl/
+skills-lock.json
+release-v*.md
+vaecos-v*.zip
+v0.2/v0.2/
+v0.2/tests/_debug_post.py

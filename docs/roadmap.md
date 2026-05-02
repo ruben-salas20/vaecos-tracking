@@ -57,7 +57,7 @@
 - `AGENTS.md`: instrucciones compactas para futuras sesiones.
 - `.env`: configuración local real.
 - `.env.example`: plantilla de configuración.
-- `proceso_seguimiento_guias_VAECOS.md`: documento histórico de reglas/proceso.
+- `docs/proceso-seguimiento-guias.md`: documento histórico de reglas/proceso.
 - `Logo_vaecos-sin fondo.png`: logo fuente de la marca (negro `#0f172a` + rojo `#dc2626`).
 - `iniciar.bat`, `actualizar.bat`: scripts de distribución para usuaria final.
 - `backups/`: backups históricos de `v0.1` y `v0.2`.

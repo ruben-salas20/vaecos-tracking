@@ -125,7 +125,7 @@ _Ejemplo: Reactivar el editor de reglas en la interfaz web para que la operadora
 
 <!-- Issues de GitHub, commits relevantes, documentos relacionados, decisiones previas. -->
 
-- `roadmap.md` — Fase X: [nombre de la fase]
+- `docs/roadmap.md` — Fase X: [nombre de la fase]
 - Commit: `abc1234` — [descripción]
 - Issue: #XX — [título]
 

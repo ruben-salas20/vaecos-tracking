@@ -2,7 +2,7 @@
 
 La hoja maestra de continuidad del proyecto vive en:
 
-- `roadmap.md`
+- `docs/roadmap.md`
 
 Ese archivo contiene:
 
@@ -16,4 +16,4 @@ Ese archivo contiene:
 - pendientes reales
 - riesgos a no olvidar
 
-Si otro agente IA continúa el trabajo, debe leer primero `AGENTS.md` y luego `roadmap.md`.
+Si otro agente IA continúa el trabajo, debe leer primero `AGENTS.md` y luego `docs/roadmap.md`.
