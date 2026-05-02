@@ -224,6 +224,71 @@ def _ensure_bodega_customer_novelty_rule(connection: sqlite3.Connection) -> None
     connection.commit()
 
 
+def _ensure_bodega_reciente_rule(connection: sqlite3.Connection) -> None:
+    """Idempotent migration: insert the 'Almacenado en bodega' rule
+    (priority 71, lte 1 day) if it does not already exist in the rules table.
+
+    This handles live databases that were seeded before the rule was added
+    to DEFAULT_RULES — seed_if_empty won't fire on a non-empty table.
+
+    Bug: guide B263437621-1 fell through to manual_review because the
+    'Almacenado en bodega estancado' rule (priority 70, gt 1) does NOT
+    match reciente (≤ 1 day) and there was no base case rule.
+    """
+    if not _table_exists(connection, "rules"):
+        return
+
+    row_count = connection.execute(
+        "SELECT COUNT(*) AS c FROM rules"
+    ).fetchone()
+    if row_count is None or row_count["c"] == 0:
+        return  # table is empty — seed_if_empty / init flow will fill it
+
+    row = connection.execute(
+        "SELECT COUNT(*) AS c FROM rules WHERE name = ?",
+        ("Almacenado en bodega",),
+    ).fetchone()
+    if row is not None and row["c"] > 0:
+        return  # already present
+
+    from datetime import datetime as _datetime
+
+    now = _datetime.now().isoformat(timespec="seconds")
+
+    connection.execute(
+        """
+        INSERT INTO rules (
+            carrier, name, priority, enabled,
+            estado_match_kind, estado_match_values,
+            novelty_match_kind, novelty_match_values,
+            days_comparator, days_threshold,
+            estado_propuesto, motivo_template, requiere_accion,
+            review_needed, notes, updated_at, updated_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "effi",
+            "Almacenado en bodega",
+            71,
+            1,
+            "equals_one_of",
+            json.dumps(["almacenado en bodega"], ensure_ascii=False),
+            "any",
+            "[]",
+            "lte",
+            1,
+            "Almacenado en bodega",
+            "El estado en Effi ({estado_actual}) coincide con Notion. Sin novedades recientes.",
+            "Monitorear",
+            0,
+            "Propone mantener el estado actual cuando Effi y Notion coinciden en Almacenado en bodega y el estado es reciente.",
+            now,
+            "migration",
+        ),
+    )
+    connection.commit()
+
+
 def _apply_migrations(connection: sqlite3.Connection) -> None:
     """Idempotent ALTERs for schemas created before new columns existed."""
     _migrate_legacy_rules_table(connection)
@@ -239,6 +304,7 @@ def _apply_migrations(connection: sqlite3.Connection) -> None:
         )
 
     _ensure_bodega_customer_novelty_rule(connection)
+    _ensure_bodega_reciente_rule(connection)
 
 
 def _migrate_legacy_rules_table(connection: sqlite3.Connection) -> None:

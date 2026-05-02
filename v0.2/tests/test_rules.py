@@ -343,10 +343,11 @@ class RulesTestCase(unittest.TestCase):
         self.assertFalse(decision.review_needed)
         self.assertEqual(decision.requiere_accion, "Hablar con cliente")
 
-    def test_almacenado_bodega_sin_novedad_sigue_manual_review(self) -> None:
-        """Triangulate: ALMACENADO EN BODEGA without a customer-relevant
-        novelty (e.g., no novelty at all, 0 days) should still fall through
-        to manual_review (no stagnation since days=0 < 1)."""
+    def test_almacenado_bodega_sin_novedad_reciente_propone_mantener(self) -> None:
+        """RED: ALMACENADO EN BODEGA sin novedad de cliente, reciente (0-1 días),
+        debe proponer mantener 'Almacenado en bodega', NO manual_review.
+        Bug: guide B263437621-1 caía en manual_review porque no había regla
+        para el caso base de 'Almacenado en bodega' reciente."""
         tracking = EffiTrackingData(
             url="https://example.test",
             estado_actual="ALMACENADO EN BODEGA",
@@ -367,10 +368,149 @@ class RulesTestCase(unittest.TestCase):
 
         decision = decide_status(tracking, today=date(2026, 4, 30))
 
-        # Stagnation rule "Almacenado en bodega estancado" requires days > 1,
-        # so with 0 days it won't fire.  No contextual novelty match → fallback.
-        self.assertTrue(decision.review_needed)
-        self.assertIsNone(decision.estado_propuesto)
+        # Nueva regla "Almacenado en bodega" (priority 71, lte 1) debe disparar.
+        self.assertFalse(decision.review_needed,
+            "Nueva regla base evita manual_review para Almacenado en bodega reciente")
+        self.assertEqual(decision.estado_propuesto, "Almacenado en bodega",
+            "Debe proponer mantener el estado actual de Almacenado en bodega")
+        self.assertEqual(decision.requiere_accion, "Monitorear")
+        self.assertEqual(decision.matched_rule_name, "Almacenado en bodega")
+
+    def test_almacenado_bodega_sin_novedad_estancado_sigue_sin_movimiento(self) -> None:
+        """TRIANGULATE: ALMACENADO EN BODEGA sin novedad, 2+ días →
+        la regla de estancamiento 'Almacenado en bodega estancado' (priority 70,
+        gt 1) debe seguir ganando sobre la nueva regla base (priority 71, lte 1)."""
+        tracking = EffiTrackingData(
+            url="https://example.test",
+            estado_actual="ALMACENADO EN BODEGA",
+            status_history=[
+                EffiStatusEvent(
+                    date=datetime(2026, 4, 28, 12, 0),  # 2 days ago
+                    status="ALMACENADO EN BODEGA",
+                )
+            ],
+            novelty_history=[],
+        )
+
+        decision = decide_status(tracking, today=date(2026, 4, 30))
+
+        self.assertEqual(decision.estado_propuesto, "Sin movimiento",
+            "Estancamiento (gt 1) debe ganar sobre regla base (lte 1)")
+        self.assertFalse(decision.review_needed)
+        self.assertEqual(decision.matched_rule_name, "Almacenado en bodega estancado")
+
+    def test_almacenado_bodega_con_novedad_cliente_sigue_en_novedad(self) -> None:
+        """TRIANGULATE: ALMACENADO EN BODEGA con novedad de cliente, 0 días →
+        la regla contextual (priority 25, fase 3) debe ganar sobre la nueva
+        regla base (priority 71, fase 4)."""
+        tracking = EffiTrackingData(
+            url="https://example.test",
+            estado_actual="ALMACENADO EN BODEGA",
+            status_history=[
+                EffiStatusEvent(
+                    date=datetime(2026, 4, 30, 12, 0),
+                    status="ALMACENADO EN BODEGA",
+                )
+            ],
+            novelty_history=[
+                EffiNovedadEvent(
+                    date=datetime(2026, 4, 30, 12, 0),
+                    novelty="Cliente no quiso recibir",
+                    details="Rechaza el paquete",
+                )
+            ],
+        )
+
+        decision = decide_status(tracking, today=date(2026, 4, 30))
+
+        self.assertEqual(decision.estado_propuesto, "En novedad",
+            "Contextual debe ganar sobre regla base cuando hay novedad de cliente")
+        self.assertFalse(decision.review_needed)
+        self.assertEqual(decision.matched_rule_name,
+                         "Almacenado en bodega con novedad de cliente")
+
+    def test_almacenado_bodega_reciente_pipeline_unchanged(self) -> None:
+        """RED (integrated): Effi 'ALMACENADO EN BODEGA' + Notion
+        'Almacenado en bodega' + 0 días + sin novedad de cliente →
+        classify_result_with_cooldown debe devolver 'unchanged'."""
+        tracking = EffiTrackingData(
+            url="https://example.test",
+            estado_actual="ALMACENADO EN BODEGA",
+            status_history=[
+                EffiStatusEvent(
+                    date=datetime(2026, 4, 30, 12, 0),
+                    status="ALMACENADO EN BODEGA",
+                )
+            ],
+            novelty_history=[],
+        )
+
+        decision = decide_status(
+            tracking,
+            today=date(2026, 4, 30),
+            notion_estado="Almacenado en bodega",
+        )
+        resultado, motivo, accion, estado_propuesto = classify_result_with_cooldown(
+            decision=decision,
+            notion_estado="Almacenado en bodega",
+        )
+
+        self.assertEqual(resultado, "unchanged",
+            "Pipeline debe devolver unchanged cuando Effi y Notion coinciden en Almacenado en bodega")
+        self.assertEqual(estado_propuesto, "Almacenado en bodega")
+        self.assertEqual(accion, "Monitorear")
+        self.assertIn("coincide con Notion", motivo)
+
+    def test_almacenado_bodega_1_dia_todavia_reciente(self) -> None:
+        """TRIANGULATE: 1 día desde el último estado → todavía activa la
+        regla base (lte 1), no la de estancamiento (gt 1)."""
+        tracking = EffiTrackingData(
+            url="https://example.test",
+            estado_actual="ALMACENADO EN BODEGA",
+            status_history=[
+                EffiStatusEvent(
+                    date=datetime(2026, 4, 29, 12, 0),  # 1 day ago
+                    status="ALMACENADO EN BODEGA",
+                )
+            ],
+            novelty_history=[],
+        )
+
+        decision = decide_status(tracking, today=date(2026, 4, 30))
+
+        self.assertEqual(decision.estado_propuesto, "Almacenado en bodega",
+            "1 día debe ser reciente (lte 1), no estancado (gt 1)")
+        self.assertEqual(decision.matched_rule_name, "Almacenado en bodega")
+
+    def test_almacenado_bodega_reciente_notion_diferente_propone_cambio(self) -> None:
+        """TRIANGULATE: Effi 'ALMACENADO EN BODEGA' + Notion 'En ruta' + 0 días →
+        la regla propone 'Almacenado en bodega', y el clasificador devuelve
+        'changed' por la diferencia de estados."""
+        tracking = EffiTrackingData(
+            url="https://example.test",
+            estado_actual="ALMACENADO EN BODEGA",
+            status_history=[
+                EffiStatusEvent(
+                    date=datetime(2026, 4, 30, 12, 0),
+                    status="ALMACENADO EN BODEGA",
+                )
+            ],
+            novelty_history=[],
+        )
+
+        decision = decide_status(
+            tracking,
+            today=date(2026, 4, 30),
+            notion_estado="En ruta",
+        )
+        resultado, _, _, estado_propuesto = classify_result_with_cooldown(
+            decision=decision,
+            notion_estado="En ruta",
+        )
+
+        self.assertEqual(resultado, "changed",
+            "Cuando Notion difiere de Effi, debe proponer cambio (no unchanged)")
+        self.assertEqual(estado_propuesto, "Almacenado en bodega")
 
     def test_almacenado_bodega_with_cliente_no_quiso_recibir(self) -> None:
         """Triangulate: another ANOMALIA_PATTERNS entry ('cliente no quiso
