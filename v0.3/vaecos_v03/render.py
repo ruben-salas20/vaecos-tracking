@@ -95,8 +95,8 @@ def layout(title: str, body: str) -> str:
       height: 26px; width: auto;
     }}
     .sidebar-toggle-btn {{
-      display: flex; align-items: center; gap: 6px;
-      padding: 0 0 2px; cursor: pointer; user-select: none;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      width: 100%; padding: 0 0 2px; cursor: pointer; user-select: none;
       border: none; background: none; color: var(--sidebar-muted);
       font: inherit; font-size: .68rem; font-weight: 700;
       letter-spacing: .1em; text-transform: uppercase;
@@ -148,7 +148,7 @@ def layout(title: str, body: str) -> str:
     .nav-primary.nav-active {{ color: #fff !important; background: rgba(220,38,38,.28) !important; }}
 
     /* ── Main content ─────────────────────────────────── */
-    .main {{ padding: 28px 32px; max-width: 1400px; }}
+    .main {{ padding: 28px 32px; width: 100%; }}
 
     /* ── Hero ─────────────────────────────────────────── */
     .hero {{
@@ -344,7 +344,7 @@ def layout(title: str, body: str) -> str:
       <div class="sidebar-nav">
         <button class="sidebar-toggle-btn" onclick="toggleSidebar()" title="Colapsar/expandir menu">
           <span class="sidebar-toggle-icon"></span>
-          <span class="sidebar-toggle-label">Menu</span>
+          <span class="sidebar-toggle-label"></span>
         </button>
         <div class="nav-group">
           <div class="nav-label">
@@ -426,6 +426,11 @@ def layout(title: str, body: str) -> str:
         form.style.display = 'block';
         text.style.display = 'none';
         form.querySelector('textarea').focus();
+        // Auto-scroll horizontally so the inline editor is fully visible
+        var cell = form.closest('td');
+        if (cell) {{
+          cell.scrollIntoView({{ behavior: 'smooth', block: 'nearest', inline: 'end' }});
+        }}
       }} else {{
         form.style.display = 'none';
         text.style.display = '';

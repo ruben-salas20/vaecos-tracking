@@ -553,6 +553,15 @@ class Phase3LayoutTestCase(unittest.TestCase):
         self.assertIn("Requiere atencion", html,
                       "Nav links must be visible by default")
 
+    def test_main_uses_full_width_not_max_width(self):
+        """.main CSS MUST use width:100% (not max-width:1400px) so content
+        fills available horizontal space when sidebar collapses."""
+        html = layout("Test", "<p>body</p>")
+        self.assertNotIn("max-width: 1400px", html,
+                         ".main must not enforce max-width: 1400px")
+        self.assertIn("width: 100%", html,
+                      ".main must use width: 100% to fill grid column")
+
 
 class Phase3HandlerTestCase(unittest.TestCase):
     """Phase 3 — HTTP routing for POST notes and GET export/effi."""
@@ -1169,6 +1178,20 @@ class Phase5M4InlineEditTestCase(unittest.TestCase):
                           "Inline form must include a Save button")
             self.assertIn("Cancelar", html,
                           "Inline form must include a Cancel button")
+        finally:
+            tmp.cleanup()
+
+    def test_toggle_notas_form_includes_autoscroll(self):
+        """toggleNotasForm MUST include scrollIntoView so the inline editor
+        cell is scrolled into view automatically when the form opens."""
+        repo, tmp = self._make_repo()
+        try:
+            html = _render_run_detail(repo, 1, {})
+            self.assertIn("scrollIntoView", html,
+                          "toggleNotasForm must call scrollIntoView "
+                          "to bring the inline editor into view")
+            self.assertIn("closest('td')", html,
+                          "Auto-scroll must target the closest td ancestor")
         finally:
             tmp.cleanup()
 
