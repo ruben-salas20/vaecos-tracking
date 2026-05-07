@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Novedades VAECOS Tracking — Guía para la operadora</title>
+<style>
+  :root {
+    --brand: #DC2626;
+    --brand-dark: #7F1D1D;
+    --ink: #1A1A1A;
+    --ink-2: #3D3D3A;
+    --muted: #6B6862;
+    --bg: #FFFFFF;
+    --surface: #F8F6F2;
+    --border: #E8E4DC;
+    --green: #16A34A;
+    --green-bg: #DCFCE7;
+    --red: #DC2626;
+    --red-bg: #FEE2E2;
+    --yellow: #CA8A04;
+    --yellow-bg: #FEF3C7;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", system-ui, sans-serif;
+    color: var(--ink); background: var(--bg);
+    line-height: 1.55;
+    font-size: 13.5px;
+  }
+  .page {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 40px 48px;
+  }
+  /* Cover */
+  .cover {
+    min-height: 95vh;
+    display: flex; flex-direction: column; justify-content: space-between;
+    page-break-after: always;
+  }
+  .cover-top { padding-top: 80px; }
+  .cover-brand {
+    display: inline-block;
+    background: var(--brand);
+    color: white;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 2px;
+    padding: 6px 14px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    margin-bottom: 32px;
+  }
+  .cover-title {
+    font-size: 44px;
+    font-weight: 700;
+    line-height: 1.1;
+    margin: 0 0 16px 0;
+    color: var(--ink);
+  }
+  .cover-subtitle {
+    font-size: 18px;
+    color: var(--muted);
+    font-weight: 400;
+    margin: 0 0 48px 0;
+    line-height: 1.4;
+  }
+  .cover-meta {
+    border-top: 2px solid var(--ink);
+    padding-top: 20px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .cover-meta strong { color: var(--ink); }
+  .cover-meta div + div { margin-top: 4px; }
+  .cover-bottom {
+    color: var(--muted);
+    font-size: 12px;
+    font-style: italic;
+  }
+
+  /* Section breaks */
+  h1 {
+    font-size: 26px;
+    font-weight: 700;
+    margin: 48px 0 8px 0;
+    padding-top: 16px;
+    border-top: 3px solid var(--ink);
+    page-break-before: always;
+  }
+  h1:first-of-type { page-break-before: auto; }
+  h1 .num {
+    color: var(--brand);
+    font-weight: 700;
+    margin-right: 12px;
+  }
+  h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 28px 0 8px 0;
+    color: var(--ink);
+  }
+  h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 18px 0 6px 0;
+    color: var(--ink-2);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  p { margin: 0 0 10px 0; }
+  ul, ol { margin: 0 0 12px 0; padding-left: 22px; }
+  li { margin-bottom: 4px; }
+  strong { color: var(--ink); }
+  em { color: var(--ink-2); font-style: normal; font-weight: 500; }
+
+  /* Boxes */
+  .box {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 12px 0;
+    background: var(--surface);
+  }
+  .box.green { background: var(--green-bg); border-color: var(--green); }
+  .box.red { background: var(--red-bg); border-color: var(--red); }
+  .box.yellow { background: var(--yellow-bg); border-color: var(--yellow); }
+  .box-title {
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .box.green .box-title { color: var(--green); }
+  .box.red .box-title { color: var(--red); }
+  .box.yellow .box-title { color: var(--yellow); }
+
+  /* Before/after */
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin: 14px 0;
+  }
+  .compare .box { margin: 0; }
+
+  /* Step list */
+  ol.steps {
+    counter-reset: step;
+    list-style: none;
+    padding-left: 0;
+  }
+  ol.steps li {
+    counter-increment: step;
+    padding-left: 36px;
+    position: relative;
+    margin-bottom: 10px;
+    line-height: 1.5;
+  }
+  ol.steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0; top: 0;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--brand);
+    color: white;
+    font-weight: 700;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  code, .mono {
+    font-family: "SF Mono", "Consolas", "Courier New", monospace;
+    background: var(--surface);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.92em;
+    border: 1px solid var(--border);
+  }
+
+  /* TOC */
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 28px;
+    margin: 24px 0;
+  }
+  .toc-title {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+    color: var(--ink);
+  }
+  .toc ol {
+    counter-reset: toc;
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+  }
+  .toc ol li {
+    counter-increment: toc;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--border);
+    display: flex;
+    align-items: baseline;
+  }
+  .toc ol li:last-child { border-bottom: 0; }
+  .toc ol li::before {
+    content: counter(toc, decimal-leading-zero);
+    color: var(--brand);
+    font-weight: 700;
+    margin-right: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+  .toc-name { font-weight: 500; }
+  .toc-desc { color: var(--muted); margin-left: 8px; font-size: 12px; }
+
+  /* URL pill */
+  .url {
+    display: inline-block;
+    background: var(--ink);
+    color: white;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-family: "SF Mono", "Consolas", monospace;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  /* Footer */
+  .footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* Print tweaks */
+  @media print {
+    body { font-size: 11pt; }
+    .page { padding: 0; max-width: none; }
+    .no-print { display: none; }
+    h1 { page-break-before: always; }
+    h1:first-of-type { page-break-before: auto; }
+    .box, .compare, ol.steps li { page-break-inside: avoid; }
+    .cover { min-height: auto; padding: 60px 0; }
+  }
+
+  /* Print instructions banner (shown on screen only) */
+  .print-banner {
+    position: sticky;
+    top: 0;
+    background: var(--ink);
+    color: white;
+    padding: 12px 24px;
+    font-size: 13px;
+    text-align: center;
+    z-index: 100;
+  }
+  .print-banner kbd {
+    background: white;
+    color: var(--ink);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+
+<div class="print-banner no-print">
+  Para guardar como PDF: presioná <kbd>Ctrl</kbd> + <kbd>P</kbd> y elegí "Guardar como PDF" en el destino.
+</div>
+
+<div class="page">
+
+<!-- =========================== COVER =========================== -->
+<section class="cover">
+  <div class="cover-top">
+    <div class="cover-brand">VAECOS Tracking</div>
+    <h1 class="cover-title" style="border-top: 0; padding-top: 0; margin: 0 0 16px 0;">Novedades de la app</h1>
+    <p class="cover-subtitle">
+      Todo lo nuevo que se incorporó entre la versión <strong>v0.3.4.2</strong> y la versión actual <strong>v0.4 (Fase 2 entregada)</strong>.<br>
+      Esta guía está pensada para que la operadora conozca de un vistazo lo que cambió y cómo trabajar con la nueva interfaz.
+    </p>
+    <div class="cover-meta">
+      <div><strong>Versión:</strong> v0.4 — Fase 2 parcial (2.1, 2.2, 2.3 entregadas; 2.4 y 2.5 pendientes)</div>
+      <div><strong>Fecha:</strong> 7 de mayo de 2026</div>
+      <div><strong>URL de la app:</strong> <span class="url">https://app.vaecos.com</span></div>
+      <div><strong>Cómo accedés:</strong> tu email + contraseña que te entregue el administrador</div>
+    </div>
+  </div>
+  <div class="cover-bottom">
+    Documento interno — VAECOS · operación y seguimiento · 2026
+  </div>
+</section>
+
+<!-- =========================== INTRO + TOC =========================== -->
+<h1><span class="num">00</span>Resumen rápido</h1>
+
+<p>
+  La versión <code>v0.3.4.2</code> que estabas usando era una herramienta local en tu PC, sin login, donde para crear o editar una guía tenías que abrir Notion. Notion era la <strong>fuente principal</strong> de datos.
+</p>
+<p>
+  La nueva versión <code>v0.4</code> vive en internet: la abrís desde cualquier navegador en <span class="url">https://app.vaecos.com</span>, te logueás con tu email, y desde ahí podés <strong>hacer todo sin tocar Notion ni Excel</strong>:
+  crear guías, editar campos, archivarlas, restaurarlas, agregar notas, lanzar corridas y consultar el histórico.
+</p>
+
+<div class="box green">
+  <div class="box-title">Lo más importante en una frase</div>
+  La app pasó a ser tu lugar principal de trabajo. Notion ya no es obligatorio: queda como espejo donde se reflejan los cambios automáticamente.
+</div>
+
+<div class="toc">
+  <div class="toc-title">Lo que vas a encontrar en esta guía</div>
+  <ol>
+    <li><span class="toc-name">Cómo acceder a la app</span><span class="toc-desc">Login, modo oscuro, sidebar</span></li>
+    <li><span class="toc-name">Tu cuenta personal</span><span class="toc-desc">Editar tu nombre, email y contraseña</span></li>
+    <li><span class="toc-name">Buscar y ver guías</span><span class="toc-desc">Búsqueda inteligente y vista global</span></li>
+    <li><span class="toc-name">Editar una guía</span><span class="toc-desc">Estado, producto, teléfono, valor, cantidad y notas</span></li>
+    <li><span class="toc-name">Crear una guía nueva</span><span class="toc-desc">Sin Excel ni Notion</span></li>
+    <li><span class="toc-name">Archivar y restaurar guías</span><span class="toc-desc">Equivalente a "borrar" pero recuperable</span></li>
+    <li><span class="toc-name">Corridas y sincronización</span><span class="toc-desc">Cómo se procesan las guías y cómo se mantiene todo al día</span></li>
+    <li><span class="toc-name">Importar guías por Excel</span><span class="toc-desc">Sigue funcionando como antes</span></li>
+    <li><span class="toc-name">Qué pasa si Notion falla</span><span class="toc-desc">Garantía atómica de los cambios</span></li>
+  </ol>
+</div>
+
+<!-- =========================== 1. ACCESO =========================== -->
+<h1><span class="num">01</span>Cómo acceder a la app</h1>
+
+<h2>Login</h2>
+<ol class="steps">
+  <li>Abrí tu navegador (Chrome, Edge, Firefox) y andá a <span class="url">https://app.vaecos.com</span>.</li>
+  <li>Ingresá tu <strong>email</strong> y la <strong>contraseña</strong> que te entregó el administrador.</li>
+  <li>La primera vez que ingresás, te recomendamos cambiar la contraseña por una propia (ver Sección 02).</li>
+</ol>
+
+<div class="box yellow">
+  <div class="box-title">Importante</div>
+  Si alguien intenta varias contraseñas seguidas, el sistema lo bloquea por un minuto. Esto te protege contra accesos no autorizados.
+</div>
+
+<h2>Modo claro y modo oscuro</h2>
+<p>
+  Abajo a la izquierda, junto a tu avatar, hay un botón con un sol o luna. Al hacer click cambia entre el modo claro y oscuro de la interfaz. Tu preferencia queda guardada para próximas sesiones.
+</p>
+
+<h2>Barra lateral plegable</h2>
+<p>
+  La barra de navegación de la izquierda se puede plegar y desplegar usando la flechita en la esquina superior. Con la barra plegada gana espacio la pantalla principal — al pasar el mouse sobre los íconos te muestran el nombre del menú.
+</p>
+
+<!-- =========================== 2. CUENTA =========================== -->
+<h1><span class="num">02</span>Tu cuenta personal</h1>
+
+<p>
+  Cualquier usuario puede editar su nombre, email y contraseña sin necesidad de pedir ayuda al administrador.
+</p>
+
+<ol class="steps">
+  <li>Hacé click sobre tu avatar abajo a la izquierda (donde aparece tu nombre).</li>
+  <li>Se abre un menú pequeño con dos opciones: <strong>Mi cuenta</strong> y <strong>Cerrar sesión</strong>.</li>
+  <li>Hacé click en <strong>Mi cuenta</strong>.</li>
+  <li>En el panel <em>Información personal</em> podés cambiar tu nombre o email. Click en "Guardar cambios".</li>
+  <li>En el panel <em>Seguridad</em> ingresás tu contraseña actual y la nueva (mínimo 8 caracteres). Click en "Actualizar contraseña".</li>
+</ol>
+
+<div class="box yellow">
+  <div class="box-title">Si cambiás tu email</div>
+  Tu próximo login va a ser con el nuevo email. Asegurate de no perderlo. Si te quedás afuera, el administrador te lo puede restablecer.
+</div>
+
+<!-- =========================== 3. BUSCAR =========================== -->
+<h1><span class="num">03</span>Buscar y ver guías</h1>
+
+<h2>Vista global de guías — <code>/all-guides</code></h2>
+<p>
+  En el menú lateral, hacé click en <strong>"Todas las guías"</strong>. Vas a ver una tabla con todas las guías del sistema (incluyendo las que el motor no procesa, como entregadas, devoluciones e indemnizaciones).
+</p>
+<p>
+  Tenés filtros arriba para acotar por <em>estado</em>, <em>transportista</em> o por una palabra clave. La columna "Auto vs Manual" te indica si el último cambio de estado lo hizo el motor automáticamente o lo hizo una persona desde la app.
+</p>
+
+<h2>Búsqueda inteligente — <code>/search</code></h2>
+<p>
+  En el menú lateral, "Buscar". Es un solo cuadro de texto que detecta automáticamente qué le estás escribiendo:
+</p>
+<ul>
+  <li>Si escribís un <strong>número de guía</strong> (por ejemplo <code>B263410064-1</code>) te lleva al detalle de esa guía.</li>
+  <li>Si escribís <strong>solo dígitos</strong> busca por DPI o teléfono y te muestra todos los pedidos de ese cliente.</li>
+  <li>Si escribís un <strong>nombre</strong>, busca clientes por su nombre.</li>
+</ul>
+
+<h2>Detalle de una guía — <code>/guides/&lt;número&gt;</code></h2>
+<p>
+  Desde cualquier vista podés hacer click sobre una guía y vas al detalle, donde tenés:
+</p>
+<ul>
+  <li>Estado actual + fecha de última sincronización con Notion</li>
+  <li>Panel de datos editables (producto, teléfono, valor, cantidad)</li>
+  <li>Notas con historial</li>
+  <li>Historial de cambios manuales (auditoría — quién cambió qué y cuándo)</li>
+  <li>Historial de corridas para esa guía</li>
+  <li>Botones para "Correr esta guía (dry-run)" y "Correr esta guía (apply)"</li>
+  <li>Zona roja al final con el botón <strong>Archivar</strong></li>
+</ul>
+
+<!-- =========================== 4. EDITAR =========================== -->
+<h1><span class="num">04</span>Editar una guía</h1>
+
+<p>
+  Antes tenías que abrir Notion para cambiar cualquier dato. Ahora todo se edita desde el detalle de la guía en la app.
+</p>
+
+<h2>Cambiar el estado novedad</h2>
+<ol class="steps">
+  <li>Andá al detalle de la guía.</li>
+  <li>En el panel superior verás un <em>menú desplegable</em> con el estado actual.</li>
+  <li>Elegí el nuevo estado del listado.</li>
+  <li>El cambio se guarda automáticamente. Si Notion lo acepta, queda reflejado en la app y en Notion al mismo tiempo.</li>
+</ol>
+
+<h2>Editar producto, teléfono, valor y cantidad</h2>
+<p>
+  Debajo del panel de estado hay otro panel llamado <strong>Datos de la guía</strong> con cuatro campos:
+</p>
+<ul>
+  <li><strong>Producto</strong> — texto libre</li>
+  <li><strong>Teléfono</strong> — solo dígitos (sin guiones, espacios ni el +)</li>
+  <li><strong>Valor</strong> — el monto a recaudar</li>
+  <li><strong>Cantidad</strong> — número entero de productos</li>
+</ul>
+<p>
+  Modificá los que necesites y hacé click en <strong>"Guardar cambios"</strong>.
+</p>
+
+<div class="box red">
+  <div class="box-title">Regla importante: campos vacíos</div>
+  Si dejás un campo vacío al guardar, ese campo <strong>NO se modifica</strong> en Notion ni en la app. Esto es para evitar borrar datos por accidente al guardar el formulario.
+  Si realmente querés borrar un valor (poner el campo vacío), tenés que hacerlo desde Notion directamente.
+</div>
+
+<h2>Notas con historial</h2>
+<p>
+  En el panel <strong>Notas</strong> podés agregar comentarios sobre la guía. Cada nota queda registrada con tu nombre y la fecha. Podés agregar varias notas a lo largo del tiempo y todas quedan visibles. Si te equivocaste, podés borrar una nota tuya con el ícono X (los administradores pueden borrar cualquier nota).
+</p>
+<p>
+  Atajo de teclado: <kbd>Ctrl</kbd> + <kbd>Enter</kbd> para guardar la nota sin tener que mover el ratón.
+</p>
+
+<!-- =========================== 5. CREAR =========================== -->
+<h1><span class="num">05</span>Crear una guía nueva</h1>
+
+<p>
+  Antes la única forma de crear guías era subir un Excel desde el menú "Importar guías". Ahora podés crear una guía individual directo desde la app.
+</p>
+
+<ol class="steps">
+  <li>Andá a <strong>Todas las guías</strong> (menú lateral).</li>
+  <li>Arriba a la derecha hay un botón <strong>"Nueva guía"</strong>.</li>
+  <li>Llenás el formulario con los datos de la guía: número, cliente, teléfono, producto, valor, cantidad, estado y transportista.</li>
+  <li>Click en <strong>"Crear guía"</strong>.</li>
+  <li>Si todo está correcto, te lleva al detalle de la guía recién creada con un mensaje verde de confirmación.</li>
+</ol>
+
+<div class="box yellow">
+  <div class="box-title">Validaciones automáticas</div>
+  <ul style="margin: 6px 0 0 0;">
+    <li>El <strong>número de guía y el cliente son obligatorios</strong>.</li>
+    <li>El <strong>teléfono</strong> solo acepta dígitos.</li>
+    <li>El <strong>valor y la cantidad</strong> no pueden ser negativos.</li>
+    <li>No podés crear una guía con un número que ya exista — el sistema te avisa.</li>
+  </ul>
+</div>
+
+<p>
+  La guía creada aparece <strong>al instante</strong> en Notion (con todos los campos completos) y también en la lista de "Todas las guías" de la app. No necesitás sincronizar manualmente.
+</p>
+
+<!-- =========================== 6. ARCHIVAR =========================== -->
+<h1><span class="num">06</span>Archivar y restaurar guías</h1>
+
+<p>
+  Si una guía está mal cargada, se duplicó o por cualquier motivo querés que deje de aparecer, podés <strong>archivarla</strong> desde la app.
+</p>
+
+<div class="compare">
+  <div class="box green">
+    <div class="box-title">Lo que SÍ pasa al archivar</div>
+    <ul style="margin: 4px 0 0 0; padding-left: 18px;">
+      <li>La guía va a la <strong>papelera de Notion</strong></li>
+      <li>Desaparece de "Todas las guías"</li>
+      <li>El motor deja de procesarla en corridas</li>
+      <li>El historial sigue accesible si entrás a la URL directa</li>
+      <li>Es <strong>recuperable por 30 días</strong></li>
+    </ul>
+  </div>
+  <div class="box red">
+    <div class="box-title">Lo que NO pasa</div>
+    <ul style="margin: 4px 0 0 0; padding-left: 18px;">
+      <li>NO se borra el historial de corridas anteriores</li>
+      <li>NO se borran las notas que dejaste</li>
+      <li>NO se borra el registro de auditoría</li>
+      <li>NO es un borrado permanente — está en la papelera</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Cómo archivar</h2>
+<ol class="steps">
+  <li>Abrí el detalle de la guía.</li>
+  <li>Bajá hasta la <em>zona roja</em> al final, donde dice "Archivar esta guía".</li>
+  <li>Click en <strong>Archivar</strong>.</li>
+  <li>Confirmá en el cartel emergente.</li>
+  <li>Vas a volver a "Todas las guías" con un mensaje verde de confirmación. La guía ya no aparece en la lista.</li>
+</ol>
+
+<h2>Cómo restaurar una guía archivada</h2>
+<ol class="steps">
+  <li>Andá directamente a la URL de la guía (por ejemplo <span class="url">https://app.vaecos.com/guides/B263410064-1</span>).</li>
+  <li>Vas a ver un cartel amarillo arriba que dice "Esta guía está archivada" con un botón <strong>Restaurar</strong>.</li>
+  <li>Click en <strong>Restaurar</strong>, confirmá y la guía vuelve a aparecer normal en "Todas las guías".</li>
+</ol>
+
+<div class="box yellow">
+  <div class="box-title">Atención — limite de 30 días</div>
+  Si pasaron más de 30 días desde el archivado, Notion borra la página de la papelera <strong>permanentemente</strong>. En ese caso, al intentar restaurarla, la app te va a mostrar un error y no se puede recuperar. Si necesitás restaurarla, hacelo dentro de las primeras 4 semanas.
+</div>
+
+<!-- =========================== 7. CORRIDAS =========================== -->
+<h1><span class="num">07</span>Corridas y sincronización</h1>
+
+<h2>Lanzar una corrida</h2>
+<p>
+  Una "corrida" es cuando el sistema consulta a Effi (el transportista) por todas las guías activas, evalúa los cambios de estado y los aplica si fuera necesario.
+</p>
+
+<ol class="steps">
+  <li>En el menú lateral, click en <strong>"Nueva corrida"</strong>.</li>
+  <li>Elegí el modo:
+    <ul>
+      <li><strong>Dry-run</strong> — simula la corrida sin escribir cambios. Se usa para ver qué pasaría.</li>
+      <li><strong>Apply</strong> — aplica los cambios reales en Notion.</li>
+    </ul>
+  </li>
+  <li>Click en "Iniciar". Te muestra una pantalla de progreso.</li>
+  <li>Cuando termina, te lleva al detalle de la corrida con el resumen.</li>
+</ol>
+
+<h2>Sincronización con Notion</h2>
+<p>
+  La app mantiene una copia local de todas las guías. Esa copia se sincroniza con Notion automáticamente:
+</p>
+<ul>
+  <li><strong>Antes</strong> de cada corrida — para tener los datos frescos al procesar.</li>
+  <li><strong>Después</strong> de cada corrida — para reflejar los cambios que el motor aplicó.</li>
+</ul>
+<p>
+  Si en algún momento querés sincronizar manualmente (por ejemplo, alguien hizo un cambio en Notion y querés verlo enseguida en la app), andá a <strong>Todas las guías</strong> y hacé click en el botón <strong>"Sincronizar con Notion"</strong>.
+</p>
+
+<!-- =========================== 8. EXCEL =========================== -->
+<h1><span class="num">08</span>Importar guías por Excel</h1>
+
+<p>
+  El flujo de importación masiva por Excel sigue funcionando exactamente como antes. Lo encontrás en el menú lateral en <strong>"Importar guías"</strong>.
+</p>
+
+<ol class="steps">
+  <li>Click en "Importar guías" en el menú lateral.</li>
+  <li>Subí el archivo Excel del ERP (mismo formato de siempre).</li>
+  <li>El sistema te muestra un <em>preview</em> con cuántas guías son nuevas, cuántas ya existen y cuántas tienen errores.</li>
+  <li>Si todo se ve bien, click en <strong>Confirmar importación</strong>.</li>
+  <li>El sistema crea cada guía nueva en Notion y queda lista para procesar.</li>
+</ol>
+
+<p>
+  El parser entiende los nombres de columnas con tildes y mayúsculas/minúsculas distintas. Extrae 6 campos: cliente, número de guía, DPI/teléfono, valor a recaudar, contenido (producto + cantidad) y estado inicial.
+</p>
+
+<!-- =========================== 9. ATOMICIDAD =========================== -->
+<h1><span class="num">09</span>Qué pasa si Notion falla</h1>
+
+<p>
+  Como ahora la app actualiza Notion en cada cambio, naturalmente surge la duda: ¿qué pasa si Notion está caído o si rechaza un cambio? Tenés dos garantías importantes:
+</p>
+
+<div class="box green">
+  <div class="box-title">Garantía 1 — Atomicidad</div>
+  Cualquier cambio que hagas en la app (estado, datos, archivar, crear) se intenta primero en Notion. <strong>Si Notion lo rechaza, no se modifica nada en la app tampoco</strong>. Las dos fuentes nunca quedan desincronizadas.
+</div>
+
+<div class="box green">
+  <div class="box-title">Garantía 2 — Auditoría completa</div>
+  Cada intento de cambio queda registrado en el historial de cambios manuales de la guía, incluso si falló. Vas a ver una "X roja" si Notion no aceptó el cambio, junto con el mensaje de error que devolvió. Esto te permite saber qué intentó la persona y por qué no se pudo aplicar.
+</div>
+
+<p>
+  En el detalle de cualquier guía, abajo del panel de notas, vas a encontrar la tabla "Historial de cambios manuales" con todos los intentos: quién, cuándo, qué campo, valor anterior, valor nuevo y si se sincronizó con Notion.
+</p>
+
+<h2>Si necesitás ayuda</h2>
+<p>
+  Si ves un error que no entendés, anotá la guía y el mensaje exacto que aparece y contactá al administrador. El equipo técnico tiene acceso a los logs y puede investigar qué pasó.
+</p>
+
+<!-- =========================== FOOTER =========================== -->
+<div class="footer">
+  <div>VAECOS Tracking — Guía de novedades</div>
+  <div>v0.4 · 2026-05-07</div>
+</div>
+
+</div>
+
+</body>
+</html>
