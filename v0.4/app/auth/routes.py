@@ -51,26 +51,59 @@ def logout():
     return redirect(url_for("auth.login"))
 
 
+@auth_bp.route("/mi-cuenta", methods=["GET"])
+@login_required
+def my_account():
+    repo = _get_repo()
+    user = repo.get_by_id(session["user_id"])
+    if not user:
+        session.clear()
+        return redirect(url_for("auth.login"))
+    return render_template(
+        "auth/my_account.html",
+        user=user,
+        profile_success=request.args.get("profile") == "ok",
+        profile_error=request.args.get("profile_error"),
+        password_success=request.args.get("password") == "ok",
+        password_error=request.args.get("password_error"),
+    )
+
+
+@auth_bp.route("/mi-cuenta/profile", methods=["POST"])
+@login_required
+def profile_update():
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip().lower()
+    if not name:
+        return redirect(url_for("auth.my_account", profile_error="El nombre no puede estar vacío."))
+    if not email or "@" not in email or "." not in email:
+        return redirect(url_for("auth.my_account", profile_error="Email inválido."))
+    repo = _get_repo()
+    ok, err = repo.update_profile(session["user_id"], name, email)
+    if not ok:
+        return redirect(url_for("auth.my_account", profile_error=err or "No se pudo actualizar."))
+    session["user_name"] = name
+    session["user_email"] = email
+    return redirect(url_for("auth.my_account", profile="ok"))
+
+
 @auth_bp.route("/change-password", methods=["GET", "POST"])
 @login_required
 @limiter.limit("5 per minute", methods=["POST"], key_func=lambda: str(session.get("user_id", "anon")))
 def change_password():
-    error = None
-    success = False
-    if request.method == "POST":
-        current_pw = request.form.get("current_password", "")
-        new_pw = request.form.get("new_password", "")
-        confirm_pw = request.form.get("confirm_password", "")
-        repo = _get_repo()
-        user = repo.get_by_id(session["user_id"])
-        if not user or not bcrypt.checkpw(current_pw.encode(), user["password_hash"].encode()):
-            error = "Contraseña actual incorrecta."
-        elif len(new_pw) < 8:
-            error = "La nueva contraseña debe tener al menos 8 caracteres."
-        elif new_pw != confirm_pw:
-            error = "Las contraseñas no coinciden."
-        else:
-            new_hash = bcrypt.hashpw(new_pw.encode(), bcrypt.gensalt()).decode()
-            repo.update_password(session["user_id"], new_hash)
-            success = True
-    return render_template("auth/change_password.html", error=error, success=success)
+    if request.method == "GET":
+        return redirect(url_for("auth.my_account"))
+    current_pw = request.form.get("current_password", "")
+    new_pw = request.form.get("new_password", "")
+    confirm_pw = request.form.get("confirm_password", "")
+    repo = _get_repo()
+    user = repo.get_by_id(session["user_id"])
+    if not user or not bcrypt.checkpw(current_pw.encode(), user["password_hash"].encode()):
+        return redirect(url_for("auth.my_account", password_error="Contraseña actual incorrecta."))
+    if len(new_pw) < 8:
+        return redirect(url_for("auth.my_account", password_error="La nueva contraseña debe tener al menos 8 caracteres."))
+    if new_pw != confirm_pw:
+        return redirect(url_for("auth.my_account", password_error="Las contraseñas no coinciden."))
+    new_hash = bcrypt.hashpw(new_pw.encode(), bcrypt.gensalt()).decode()
+    repo.update_password(session["user_id"], new_hash)
+    return redirect(url_for("auth.my_account", password="ok"))

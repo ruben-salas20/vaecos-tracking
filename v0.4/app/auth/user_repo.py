@@ -54,6 +54,26 @@ class UserRepository:
         finally:
             conn.close()
 
+    def update_profile(self, user_id: int, name: str, email: str) -> tuple[bool, str | None]:
+        """Update name and email. Returns (ok, error_message).
+        Email must remain unique across users."""
+        conn = self._connect()
+        try:
+            existing = conn.execute(
+                "SELECT id FROM users WHERE email = ? AND id != ?",
+                (email, user_id),
+            ).fetchone()
+            if existing:
+                return False, "Ese email ya está en uso por otro usuario."
+            conn.execute(
+                "UPDATE users SET name = ?, email = ? WHERE id = ?",
+                (name, email, user_id),
+            )
+            conn.commit()
+            return True, None
+        finally:
+            conn.close()
+
     def update_password(self, user_id: int, new_hash: str) -> None:
         conn = self._connect()
         try:

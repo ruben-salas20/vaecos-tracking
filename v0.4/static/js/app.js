@@ -13,6 +13,45 @@
   });
 })();
 
+// User card popover (click avatar/name → menú con Cambiar contraseña + Cerrar sesión)
+(function () {
+  document.addEventListener('DOMContentLoaded', function () {
+    var trigger = document.getElementById('userCardTrigger');
+    var popover = document.getElementById('userPopover');
+    if (!trigger || !popover) return;
+
+    function open() {
+      popover.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+    }
+    function close() {
+      popover.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+    function toggle() {
+      if (popover.hidden) open(); else close();
+    }
+
+    trigger.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggle();
+    });
+
+    document.addEventListener('click', function (e) {
+      if (popover.hidden) return;
+      if (popover.contains(e.target) || trigger.contains(e.target)) return;
+      close();
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !popover.hidden) {
+        close();
+        trigger.focus();
+      }
+    });
+  });
+})();
+
 // Sidebar collapse toggle (persists in localStorage)
 (function () {
   var STORAGE_KEY = 'vaecos.sidebarCollapsed';

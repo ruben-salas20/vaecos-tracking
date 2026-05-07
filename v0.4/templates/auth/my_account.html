@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Mi cuenta{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Mi cuenta</div>
+    <div class="page-sub">Editá tu información personal y actualiza tu contraseña.</div>
+  </div>
+</div>
+
+<div class="account-grid">
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Información personal</div>
+      <div class="panel-sub">Estos datos se usan para identificarte en la plataforma.</div>
+    </div>
+    <div class="panel-body">
+      {% if profile_success %}
+      <div class="banner info" style="margin-bottom:16px;">Información actualizada correctamente.</div>
+      {% endif %}
+      {% if profile_error %}
+      <div class="banner danger" style="margin-bottom:16px;">{{ profile_error }}</div>
+      {% endif %}
+      <form method="post" action="{{ url_for('auth.profile_update') }}" class="fieldgroup">
+        <div>
+          <label class="field-label" for="name">Nombre</label>
+          <input class="input" type="text" id="name" name="name" value="{{ user.name }}" required maxlength="120">
+        </div>
+        <div>
+          <label class="field-label" for="email">Email</label>
+          <input class="input" type="email" id="email" name="email" value="{{ user.email }}" required>
+          <div class="field-help">El email se usa para iniciar sesión.</div>
+        </div>
+        <div>
+          <label class="field-label">Rol</label>
+          <div class="field-static">{{ user.role }}</div>
+          <div class="field-help">Solo un administrador puede cambiar el rol.</div>
+        </div>
+        <div class="row" style="gap:8px;margin-top:4px;">
+          <button type="submit" class="btn primary">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Seguridad</div>
+      <div class="panel-sub">Cambiá tu contraseña periódicamente.</div>
+    </div>
+    <div class="panel-body">
+      {% if password_success %}
+      <div class="banner info" style="margin-bottom:16px;">Contraseña actualizada correctamente.</div>
+      {% endif %}
+      {% if password_error %}
+      <div class="banner danger" style="margin-bottom:16px;">{{ password_error }}</div>
+      {% endif %}
+      <form method="post" action="{{ url_for('auth.change_password') }}" class="fieldgroup">
+        <div>
+          <label class="field-label" for="current_password">Contraseña actual</label>
+          <input class="input" type="password" id="current_password" name="current_password" required autocomplete="current-password">
+        </div>
+        <div>
+          <label class="field-label" for="new_password">Nueva contraseña</label>
+          <input class="input" type="password" id="new_password" name="new_password" required minlength="8" autocomplete="new-password">
+          <div class="field-help">Mínimo 8 caracteres.</div>
+        </div>
+        <div>
+          <label class="field-label" for="confirm_password">Confirmar nueva contraseña</label>
+          <input class="input" type="password" id="confirm_password" name="confirm_password" required autocomplete="new-password">
+        </div>
+        <div class="row" style="gap:8px;margin-top:4px;">
+          <button type="submit" class="btn primary">Actualizar contraseña</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
