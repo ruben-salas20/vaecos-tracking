@@ -286,13 +286,18 @@ def update_fields(guia: str):
         flash("Faltan credenciales de Notion.", "error")
         return redirect(url_for("dashboard.guide_detail", guia=guia))
 
+    # Empty inputs = "do not touch this field" (no clearing via form). Si la operadora
+    # quiere realmente borrar un valor, lo hace desde Notion directamente. Esto evita
+    # borrados accidentales por dejar el formulario en blanco.
     new_values = {}
     for key in ("telefono", "producto", "valor", "cantidad"):
         if key in request.form:
-            new_values[key] = request.form.get(key, "")
+            raw = (request.form.get(key) or "").strip()
+            if raw:
+                new_values[key] = raw
 
     if not new_values:
-        flash("No se enviaron cambios.", "warn")
+        flash("No se enviaron cambios — todos los campos están vacíos.", "warn")
         return redirect(url_for("dashboard.guide_detail", guia=guia))
 
     from vaecos_v02.providers.notion_provider import NotionProvider
