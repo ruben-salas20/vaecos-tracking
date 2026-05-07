@@ -9,6 +9,11 @@ from vaecos_v02.core.models import EffiTrackingData, ProcessingResult, RunContex
 from vaecos_v02.core.rules import DEFAULT_RULES, classify_result_with_cooldown, decide_status
 from vaecos_v02.providers.carrier import Carrier, CarrierConfig
 from vaecos_v02.providers.carriers import make_carrier
+from vaecos_v02.app.services.local_guides import (
+    fetch_active_guides_local,
+    fetch_selected_guides_local,
+)
+from vaecos_v02.app.services.sync_guides import sync_guides
 from vaecos_v02.providers.notion_provider import NotionProvider
 from vaecos_v02.storage.db import clear_history, connect, init_db
 from vaecos_v02.storage.repositories import RunRepository
@@ -38,14 +43,27 @@ def execute_tracking(
         data_source_id=settings.notion_data_source_id,
         query_kind=settings.notion_query_kind,
     )
+
+    # Phase 2.1: pre-sync Notion → local antes de leer.
+    # Si el sync falla (Notion caído, sin red), usamos la última snapshot local.
+    # Las escrituras (--apply) siguen yendo a Notion sin cambio.
+    if settings.notion_api_key and settings.notion_data_source_id:
+        try:
+            sync_guides(settings.sqlite_db_path, notion)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[warn] Pre-sync con Notion falló: {exc}. Usando snapshot local existente.")
+
+    # Phase 2.1: leer guías desde la tabla local en vez de Notion.
     if all_active:
-        records, notion_stats = notion.fetch_active_guides(settings.excluded_statuses)
+        records, notion_stats = fetch_active_guides_local(
+            settings.sqlite_db_path, settings.excluded_statuses
+        )
         guides = [record.guia for record in records]
         missing_guides: list[str] = []
     else:
         guides = selected_guides or []
-        records, notion_stats = notion.fetch_selected_guides(
-            guides, settings.excluded_statuses
+        records, notion_stats = fetch_selected_guides_local(
+            settings.sqlite_db_path, guides, settings.excluded_statuses
         )
         record_map_tmp = {record.guia.upper(): record for record in records}
         missing_guides = [
