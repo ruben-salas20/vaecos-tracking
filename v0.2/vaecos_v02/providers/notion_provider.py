@@ -6,6 +6,8 @@ from urllib import error, request
 
 from vaecos_v02.core.models import NotionClientRecord
 
+_UNSET = object()
+
 
 class NotionProvider:
     def __init__(
@@ -105,6 +107,69 @@ class NotionProvider:
         }
         try:
             self._request_json(endpoint, "PATCH", payload)
+        except error.HTTPError as exc:
+            try:
+                body = exc.read().decode("utf-8") if hasattr(exc, "read") else ""
+            except Exception:
+                body = ""
+            detail = f"{exc.code} {exc.reason}"
+            if body:
+                try:
+                    parsed = json.loads(body)
+                    msg = parsed.get("message") or parsed.get("code") or ""
+                    if msg:
+                        detail = f"{detail} — {msg}"
+                except Exception:
+                    pass
+            raise RuntimeError(f"Notion update failed: {detail}")
+
+    def update_guide_fields(
+        self,
+        page_id: str,
+        *,
+        telefono=_UNSET,
+        producto=_UNSET,
+        valor=_UNSET,
+        cantidad=_UNSET,
+    ) -> None:
+        """PATCH atómico de uno o más campos editables de una guía.
+        Cada kwarg sigue semántica de tres estados:
+          - no pasado (default _UNSET) → no se toca el campo
+          - pasado con valor → se actualiza
+          - pasado como None o "" → se LIMPIA el campo en Notion
+        Lanza RuntimeError con detalle de Notion si falla."""
+        properties: dict[str, Any] = {}
+        if telefono is not _UNSET:
+            tel = "" if telefono is None else str(telefono).strip()
+            if tel == "":
+                properties["Teléfono"] = {"number": None}
+            else:
+                try:
+                    properties["Teléfono"] = {"number": int(tel)}
+                except (ValueError, TypeError) as exc:
+                    raise ValueError(f"Teléfono inválido: '{telefono}'") from exc
+        if producto is not _UNSET:
+            content = "" if producto is None else str(producto)
+            properties["Producto"] = {
+                "rich_text": [{"text": {"content": content}}] if content else []
+            }
+        if valor is not _UNSET:
+            if valor is None or valor == "":
+                properties["Valor"] = {"number": None}
+            else:
+                properties["Valor"] = {"number": float(valor)}
+        if cantidad is not _UNSET:
+            if cantidad is None or cantidad == "":
+                properties["Cant."] = {"number": None}
+            else:
+                properties["Cant."] = {"number": int(cantidad)}
+
+        if not properties:
+            return  # nothing to do
+
+        endpoint = f"https://api.notion.com/v1/pages/{page_id}"
+        try:
+            self._request_json(endpoint, "PATCH", {"properties": properties})
         except error.HTTPError as exc:
             try:
                 body = exc.read().decode("utf-8") if hasattr(exc, "read") else ""

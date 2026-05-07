@@ -2,7 +2,7 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
-from flask import Blueprint, render_template, request, redirect, url_for, current_app, session, jsonify, abort
+from flask import Blueprint, render_template, request, redirect, url_for, current_app, session, jsonify, abort, flash
 from ..auth.decorators import login_required
 from ..charts import line_chart, stacked_bar_chart
 from ..utils import fmt_duration_seconds, format_date_short
@@ -275,6 +275,58 @@ def update_state(guia: str):
         "valor_nuevo": result.valor_nuevo,
         "edit_id": result.edit_id,
     })
+
+
+@dashboard_bp.route("/guides/<path:guia>/fields", methods=["POST"])
+@login_required
+def update_fields(guia: str):
+    """Atomic update of editable fields (telefono/producto/valor/cantidad)."""
+    settings = current_app.config["SETTINGS"]
+    if not settings.notion_api_key or not settings.notion_data_source_id:
+        flash("Faltan credenciales de Notion.", "error")
+        return redirect(url_for("dashboard.guide_detail", guia=guia))
+
+    new_values = {}
+    for key in ("telefono", "producto", "valor", "cantidad"):
+        if key in request.form:
+            new_values[key] = request.form.get(key, "")
+
+    if not new_values:
+        flash("No se enviaron cambios.", "warn")
+        return redirect(url_for("dashboard.guide_detail", guia=guia))
+
+    from vaecos_v02.providers.notion_provider import NotionProvider
+    from vaecos_v02.app.services.update_guide import update_guide_fields
+
+    notion = NotionProvider(
+        api_key=settings.notion_api_key,
+        notion_version=settings.notion_version,
+        data_source_id=settings.notion_data_source_id,
+    )
+    autor = session.get("user_email", "unknown")
+
+    try:
+        result = update_guide_fields(
+            db_path=current_app.config["DB_PATH"],
+            notion=notion,
+            guia=guia,
+            new_values=new_values,
+            autor=autor,
+        )
+    except (ValueError, LookupError) as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("dashboard.guide_detail", guia=guia))
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Notion rechazó los cambios: {exc}", "error")
+        return redirect(url_for("dashboard.guide_detail", guia=guia))
+
+    if not result.changes:
+        flash("Sin cambios — los valores ingresados son iguales a los actuales.", "warn")
+    else:
+        labels = {"telefono": "Teléfono", "producto": "Producto", "valor": "Valor", "cantidad": "Cantidad"}
+        changed_labels = ", ".join(labels.get(k, k) for k in result.changes.keys())
+        flash(f"Actualizado: {changed_labels}.", "ok")
+    return redirect(url_for("dashboard.guide_detail", guia=guia))
 
 
 @dashboard_bp.route("/guides/<path:guia>/notes", methods=["POST"])

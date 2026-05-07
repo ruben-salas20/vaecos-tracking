@@ -316,6 +316,16 @@
   text-transform: capitalize;
 }
 
+/* Form de edición de campos en /guides/<g> */
+.guide-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+@media (max-width: 640px) {
+  .guide-fields-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* Allow tooltips to escape the sidebar.
    overflow-y:auto in styles.css implicitly clips overflow-x — override here. */
 .app.sidebar-collapsed .sidebar { overflow: visible; }

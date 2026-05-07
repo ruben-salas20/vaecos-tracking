@@ -50,6 +50,43 @@
     </div>
   </div>
 </div>
+
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-head">
+    <div class="panel-title">Datos de la guía</div>
+    <div class="panel-sub">Cambios atómicos: si Notion rechaza, nada se modifica localmente.</div>
+  </div>
+  <div class="panel-body">
+    <form method="post" action="{{ url_for('dashboard.update_fields', guia=guia) }}" class="guide-fields-form">
+      <div class="guide-fields-grid">
+        <div>
+          <label class="field-label" for="gf_producto">Producto</label>
+          <input class="input" type="text" id="gf_producto" name="producto"
+                 value="{{ guide_row.producto or '' }}" maxlength="500">
+        </div>
+        <div>
+          <label class="field-label" for="gf_telefono">Teléfono</label>
+          <input class="input" type="text" id="gf_telefono" name="telefono"
+                 value="{{ guide_row.telefono or '' }}" inputmode="numeric" pattern="[0-9]*">
+          <div class="field-help">Solo dígitos.</div>
+        </div>
+        <div>
+          <label class="field-label" for="gf_valor">Valor</label>
+          <input class="input" type="number" id="gf_valor" name="valor" step="0.01" min="0"
+                 value="{{ guide_row.valor if guide_row.valor is not none else '' }}">
+        </div>
+        <div>
+          <label class="field-label" for="gf_cantidad">Cantidad</label>
+          <input class="input" type="number" id="gf_cantidad" name="cantidad" step="1" min="0"
+                 value="{{ guide_row.cantidad if guide_row.cantidad is not none else '' }}">
+        </div>
+      </div>
+      <div class="row" style="gap:8px;margin-top:14px;">
+        <button type="submit" class="btn primary">Guardar cambios</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endif %}
 
 <div class="panel" id="notas" style="margin-bottom:20px;scroll-margin-top:20px;">
