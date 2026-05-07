@@ -91,13 +91,17 @@ Durante Fase 1 ya se construyó parte de la base que originalmente pertenecía a
 - [x] **Vista de gestión** (`/all-guides`) con filtros, indicador Auto vs Manual
 - [x] **Perfil de cliente** con DPI persistido y agrupación por DPI
 
+### Lo entregado en Fase 2 (2026-05-07)
+
+- [x] **2.1 Lectura local**: `run_tracking` lee desde la tabla `guides` (filtrando por `estado_novedad NOT IN excluded_states`). Pre-sync Notion→local automático antes de cada corrida (con fallback a snapshot local si Notion falla)
+- [x] **2.2 Edición de campos**: la operadora puede editar `producto`, `telefono`, `valor`, `cantidad` desde `/guides/<g>` con escritura atómica (Notion → local → audit)
+- [x] **2.3 Crear guías nuevas desde la app**: formulario `/guides/new` con validaciones, sin pasar por Excel ni Notion
+- [x] **2.3 Archivar / restaurar guías** desde la app (soft-delete a la papelera de Notion, recuperable por 30 días)
+
 ### Lo que falta para cerrar Fase 2
 
-- [ ] `run_tracking` lee la lista de guías a procesar desde la tabla `guides` (filtrando por `estado_novedad NOT IN excluded_states`) en vez de `NotionProvider.fetch_active_guides()`
-- [ ] `--apply` pasa a escribir solo en la tabla local; Notion queda como mirror opcional configurable
-- [ ] Validación de consistencia: comparar las 313 guías locales contra Notion mediante un hash/checksum periódico
-- [ ] Permitir agregar guías nuevas desde la app (sin pasar por Excel ni Notion)
-- [ ] Permitir editar otros campos además de `estado_novedad` (producto, valor, cantidad, teléfono) si la operadora lo necesita
+- [ ] **2.4 Inversión de polaridad**: `--apply` y edits pasan a escribir solo en la tabla local; Notion queda como mirror best-effort configurable
+- [ ] **2.5 Validación de consistencia**: comparar las guías locales contra Notion mediante un hash/checksum periódico
 
 ### Criterios de salida
 
