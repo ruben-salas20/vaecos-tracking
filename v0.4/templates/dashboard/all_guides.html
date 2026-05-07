@@ -15,6 +15,7 @@
     </div>
   </div>
   <div class="page-actions">
+    <a href="{{ url_for('dashboard.new_guide') }}" class="btn">Nueva guía</a>
     <form method="post" action="{{ url_for('runs.sync_notion') }}" style="display:inline;">
       <button type="submit" class="btn primary">Sincronizar con Notion</button>
     </form>

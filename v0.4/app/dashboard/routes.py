@@ -200,6 +200,64 @@ def run_detail(run_id: int):
     )
 
 
+@dashboard_bp.route("/guides/new", methods=["GET", "POST"])
+@login_required
+def new_guide():
+    """Create a new guide atomically (Notion → local + audit).
+    Disponible para cualquier usuario logueado; las credenciales de Notion
+    se toman del .env del servidor."""
+    settings = current_app.config["SETTINGS"]
+    notion_ready = bool(settings.notion_api_key and settings.notion_data_source_id)
+    estado_options = []
+    if notion_ready:
+        try:
+            from ..notion_helpers import get_estado_novedad_options
+            estado_options = get_estado_novedad_options()
+        except Exception:  # noqa: BLE001
+            estado_options = []
+
+    form_data = {"guia": "", "cliente": "", "telefono": "", "producto": "",
+                 "valor": "", "cantidad": "", "estado_novedad": "", "carrier": "effi"}
+    error = None
+
+    if request.method == "POST":
+        if not notion_ready:
+            error = "Faltan credenciales de Notion en el servidor."
+        else:
+            for k in form_data:
+                form_data[k] = (request.form.get(k) or "").strip()
+
+            from vaecos_v02.providers.notion_provider import NotionProvider
+            from vaecos_v02.app.services.add_guide import add_guide
+            notion = NotionProvider(
+                api_key=settings.notion_api_key,
+                notion_version=settings.notion_version,
+                data_source_id=settings.notion_data_source_id,
+            )
+            autor = session.get("user_email", "unknown")
+            try:
+                result = add_guide(
+                    db_path=current_app.config["DB_PATH"],
+                    notion=notion,
+                    fields=form_data,
+                    autor=autor,
+                )
+                flash(f"Guía {result.guia} creada correctamente en Notion y en la app.", "ok")
+                return redirect(url_for("dashboard.guide_detail", guia=result.guia))
+            except (ValueError, LookupError) as exc:
+                error = str(exc)
+            except Exception as exc:  # noqa: BLE001
+                error = f"Notion rechazó la creación: {exc}"
+
+    return render_template(
+        "dashboard/new_guide.html",
+        form_data=form_data,
+        estado_options=estado_options,
+        error=error,
+        notion_ready=notion_ready,
+    )
+
+
 @dashboard_bp.route("/guides/<path:guia>")
 @login_required
 def guide_detail(guia: str):
