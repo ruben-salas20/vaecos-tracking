@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% from "macros.html" import result_pill, carrier_badge, mode_badge %}
+{% block title %}Cliente — {{ cliente }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">{{ cliente | e }}</div>
+    <div class="page-sub">
+      Historial agregado del cliente en los últimos {{ days }} días.
+      {% if telefono %}
+      · DPI / Teléfono:
+      <a href="{{ url_for('dashboard.search', q=telefono) }}" class="mono">{{ telefono }}</a>
+      <span class="muted">(ver todas las guías de este DPI)</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('dashboard.analytics') }}" class="btn">Volver a analytics</a>
+    <a href="{{ url_for('dashboard.runs') }}" class="btn">Ver corridas</a>
+  </div>
+</div>
+
+{% if not summary or (summary['total_rows'] | int) == 0 %}
+<div class="banner info">Sin registros para {{ cliente | e }} en los últimos {{ days }} días.</div>
+{% else %}
+
+<div class="kpi-grid" style="margin-bottom:20px;">
+  <div class="kpi">
+    <div class="kpi-label">Guías únicas</div>
+    <div class="kpi-value">{{ summary['unique_guides'] | int }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Filas totales</div>
+    <div class="kpi-value">{{ summary['total_rows'] | int }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Cambios</div>
+    <div class="kpi-value">{{ summary['changed'] | int }}</div>
+  </div>
+  <div class="kpi {% if summary['manual_review'] | int > 0 %}alert{% endif %}">
+    <div class="kpi-label">Manual</div>
+    <div class="kpi-value">{{ summary['manual_review'] | int }}</div>
+  </div>
+  <div class="kpi {% if summary['parse_error'] | int > 0 %}alert{% endif %}">
+    <div class="kpi-label">Parse error</div>
+    <div class="kpi-value">{{ summary['parse_error'] | int }}</div>
+  </div>
+  <div class="kpi {% if summary['error'] | int > 0 %}alert{% endif %}">
+    <div class="kpi-label">Error</div>
+    <div class="kpi-value">{{ summary['error'] | int }}</div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <div class="panel-title">Historial de resultados</div>
+  </div>
+  <div class="panel-body flush">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Corrida</th><th>Inicio</th><th>Modo</th><th>Transportista</th><th>Guía</th>
+          <th>Resultado</th><th>Acción</th><th>Notion</th><th>Effi</th><th>Propuesto</th><th>Motivo</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td><a href="{{ url_for('dashboard.run_detail', run_id=row['run_id']) }}">#{{ row['run_id'] }}</a></td>
+          <td>{{ row['started_at'] | fmt_ts }}</td>
+          <td>{{ mode_badge(row['mode']) }}</td>
+          <td>{{ carrier_badge(row['carrier']) }}</td>
+          <td><a href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">{{ row['guia'] }}</a></td>
+          <td>{{ result_pill(row['resultado']) }}</td>
+          <td>{{ row['requiere_accion'] or '' | e }}</td>
+          <td>{{ row['estado_notion_actual'] or 'N/D' | e }}</td>
+          <td>{{ row['estado_effi_actual'] or 'N/D' | e }}</td>
+          <td>{{ row['estado_propuesto'] or 'N/D' | e }}</td>
+          <td>{{ row['motivo'] | e_trunc }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="11" style="text-align:center;color:var(--muted);padding:24px;">Sin resultados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

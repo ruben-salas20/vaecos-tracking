@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Corrida en progreso{% endblock %}
+{% block content %}
+{% if not job %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Corrida no encontrada</div>
+    <div class="page-sub">El token no existe o ya expiró.</div>
+  </div>
+</div>
+<a href="{{ url_for('dashboard.runs') }}" class="btn">Ver corridas</a>
+
+{% elif job.status == 'running' %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Corrida en progreso</div>
+    <div class="page-sub">Se están consultando las guías en paralelo. Esta página se actualiza automáticamente cada 3 segundos.</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('dashboard.runs') }}" class="btn">Ver corridas</a>
+  </div>
+</div>
+<div class="progress-container">
+  <div class="spinner" style="width:28px;height:28px;border-width:3px;"></div>
+  <p class="muted dots-anim">La corrida se está ejecutando en segundo plano</p>
+</div>
+<script>setTimeout(function(){ location.reload(); }, 3000);</script>
+
+{% elif job.status == 'done' %}
+<script>location.href="{{ url_for('dashboard.run_detail', run_id=job.run_id) }}?created=1";</script>
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Corrida completada</div>
+    <div class="page-sub">Redirigiendo al detalle de la corrida...</div>
+  </div>
+</div>
+
+{% else %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Error en la corrida</div>
+    <div class="page-sub">Ocurrió un error al ejecutar la corrida.</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('dashboard.run_new') }}" class="btn primary">Intentar de nuevo</a>
+    <a href="{{ url_for('dashboard.runs') }}" class="btn">Ver corridas</a>
+  </div>
+</div>
+<div class="banner danger">
+  Detalle: {{ job.error | e if job.error else 'Error desconocido.' }}
+</div>
+{% endif %}
+{% endblock %}

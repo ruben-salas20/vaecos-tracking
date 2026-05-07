@@ -1,171 +1,164 @@
----
-name: Logistics Intelligence Design System
-colors:
-  surface: '#f9f9fe'
-  surface-dim: '#d9dade'
-  surface-bright: '#f9f9fe'
-  surface-container-lowest: '#ffffff'
-  surface-container-low: '#f3f3f8'
-  surface-container: '#ededf2'
-  surface-container-high: '#e8e8ed'
-  surface-container-highest: '#e2e2e7'
-  on-surface: '#1a1c1f'
-  on-surface-variant: '#5d3f3b'
-  inverse-surface: '#2e3034'
-  inverse-on-surface: '#f0f0f5'
-  outline: '#926f6a'
-  outline-variant: '#e7bdb7'
-  surface-tint: '#c0000a'
-  primary: '#bc000a'
-  on-primary: '#ffffff'
-  primary-container: '#e2241f'
-  on-primary-container: '#fffbff'
-  inverse-primary: '#ffb4aa'
-  secondary: '#5f5e60'
-  on-secondary: '#ffffff'
-  secondary-container: '#e2dfe1'
-  on-secondary-container: '#636264'
-  tertiary: '#5b5c60'
-  on-tertiary: '#ffffff'
-  tertiary-container: '#747479'
-  on-tertiary-container: '#fefcff'
-  error: '#ba1a1a'
-  on-error: '#ffffff'
-  error-container: '#ffdad6'
-  on-error-container: '#93000a'
-  primary-fixed: '#ffdad5'
-  primary-fixed-dim: '#ffb4aa'
-  on-primary-fixed: '#410001'
-  on-primary-fixed-variant: '#930005'
-  secondary-fixed: '#e4e2e4'
-  secondary-fixed-dim: '#c8c6c8'
-  on-secondary-fixed: '#1b1b1d'
-  on-secondary-fixed-variant: '#474649'
-  tertiary-fixed: '#e3e2e7'
-  tertiary-fixed-dim: '#c6c6cb'
-  on-tertiary-fixed: '#1a1b1f'
-  on-tertiary-fixed-variant: '#46464b'
-  background: '#f9f9fe'
-  on-background: '#1a1c1f'
-  surface-variant: '#e2e2e7'
-typography:
-  display:
-    fontFamily: Inter
-    fontSize: 48px
-    fontWeight: '700'
-    lineHeight: '1.1'
-    letterSpacing: -0.02em
-  headline-lg:
-    fontFamily: Inter
-    fontSize: 32px
-    fontWeight: '700'
-    lineHeight: '1.2'
-    letterSpacing: -0.01em
-  headline-md:
-    fontFamily: Inter
-    fontSize: 24px
-    fontWeight: '600'
-    lineHeight: '1.3'
-  body-lg:
-    fontFamily: Inter
-    fontSize: 18px
-    fontWeight: '400'
-    lineHeight: '1.5'
-  body-md:
-    fontFamily: Inter
-    fontSize: 16px
-    fontWeight: '400'
-    lineHeight: '1.5'
-  label-md:
-    fontFamily: Inter
-    fontSize: 14px
-    fontWeight: '600'
-    lineHeight: '1.2'
-    letterSpacing: 0.01em
-  code:
-    fontFamily: Inter
-    fontSize: 13px
-    fontWeight: '500'
-    lineHeight: '1.4'
-    letterSpacing: 0.05em
-rounded:
-  sm: 0.125rem
-  DEFAULT: 0.25rem
-  md: 0.375rem
-  lg: 0.5rem
-  xl: 0.75rem
-  full: 9999px
-spacing:
-  unit: 4px
-  xs: 4px
-  sm: 8px
-  md: 16px
-  lg: 24px
-  xl: 40px
-  gutter: 16px
-  margin: 24px
+# VAECOS Tracking — Sistema de Diseño
+
+Version: v2.0
+Fecha: 2026-05-06
+
+> El diseño de referencia completo (React funcional, 11 pantallas) vive en `docs/design-system/`.
+> Este archivo es el resumen ejecutivo del sistema de diseño para implementación.
+
 ---
 
-## Brand & Style
+## Identidad visual
 
-This design system is engineered for the high-stakes world of global logistics and data intelligence. The brand personality is **authoritative, precise, and urgent**. It evokes the feeling of a mission-control center where data is converted into actionable movement. 
+**Personalidad**: autoritativo, preciso, urgente. "Glass cockpit" — denso en información pero estructurado para procesamiento cognitivo inmediato.
 
-The aesthetic follows a **Corporate / Modern** style with a focus on **Data-Centric Minimalism**. By utilizing high-contrast transitions between deep charcoal surfaces and vibrant action reds, the interface directs focus toward critical pathing and system statuses. The goal is to provide a "glass cockpit" experience: dense with information but structured for immediate cognitive processing.
+**Estilo**: Corporate / Modern con Data-Centric Minimalism. Transiciones de alto contraste entre superficies cálidas neutras y rojo de acción.
 
-## Colors
+---
 
-The color palette is anchored by **Vibrant Red**, used exclusively for primary actions, critical alerts, and directional indicators. This is balanced against a sophisticated range of **Grayscale Neutrals** that define the structural hierarchy.
+## Tokens de color
 
-- **Primary Action:** The red is reserved for the "critical path"—buttons that confirm shipments, initiate tracking, or highlight errors.
-- **Surface & Navigation:** Deep blacks (#000000) and Charcoal Grays (#1C1C1E) are used for sidebars and top navigation to provide a robust frame for content.
-- **Semantic Logic:** Success (Green) represents completed deliveries or "in-tolerance" metrics; Warning (Amber) signifies delays or pending approvals; Error (Red) is used for system failures or blocked logistics chains.
+```css
+/* Brand */
+--brand: #DC2626;
+--brand-strong: #B91C1C;
+--brand-soft: #FEE2E2;
+--brand-tint: #FEF2F2;
 
-## Typography
+/* Neutrals — cálidos, no fríos */
+--bg: #FAFAF9;
+--surface: #FFFFFF;
+--surface-2: #F7F7F5;
+--border: #E7E5E1;
+--border-strong: #D6D3CE;
+--hover: #F4F3F0;
 
-This design system utilizes **Inter** for all applications. Inter’s tall x-height and neutral character make it ideal for data-heavy tables and complex dashboards.
+/* Text */
+--ink: #1A1A1A;
+--ink-2: #3D3D3A;
+--muted: #76746F;
+--muted-2: #A3A09A;
 
-- **Headlines:** Use Bold (700) and SemiBold (600) weights with tighter letter spacing to mirror the heavy, impactful feel of the logo's logotype.
-- **Numerical Data:** For tracking numbers, timestamps, and coordinates, use the **label-md** or **code** styles to ensure maximum legibility at small sizes.
-- **Hierarchy:** High contrast in weight (Bold vs. Regular) is preferred over excessive variation in font size to maintain a compact, high-density layout.
+/* Semantic */
+--ok: #15803D;          --ok-soft: #DCFCE7;      --ok-tint: #F0FDF4;
+--warn: #B45309;        --warn-soft: #FEF3C7;    --warn-tint: #FFFBEB;
+--info: #1D4ED8;        --info-soft: #DBEAFE;    --info-tint: #EFF6FF;
+--danger: #B91C1C;      --danger-soft: #FEE2E2;  --danger-tint: #FEF2F2;
 
-## Layout & Spacing
+/* Sidebar — carbón cálido */
+--side-bg: #1C1B19;
+--side-bg-2: #232220;
+--side-text: #E8E6E1;
+--side-muted: #8B8A85;
+--side-border: #2D2C2A;
+--side-active: #2F2E2C;
+```
 
-The layout philosophy is built on a **12-column Fluid Grid** designed for professional monitors. A strict **4px baseline grid** ensures vertical rhythm across dense data tables and side-panels.
+Dark mode completo disponible en `docs/design-system/project/app/styles.css`.
 
-- **Density:** The system defaults to a "Comfortable" density for general management, but allows for a "Compact" toggle in data-heavy views (e.g., global shipping manifests).
-- **Alignment:** All elements should align to the 4px increments. Internal padding for cards and containers should be a minimum of 16px (md) to prevent visual clutter.
+---
 
-## Elevation & Depth
+## Tipografía
 
-To maintain a "high-tech" and precise feel, the design system avoids heavy, soft shadows. Instead, it utilizes **Tonal Layering** and **Low-Contrast Outlines**.
+- **Sans**: Geist (`'Geist', -apple-system, system-ui, sans-serif`)
+- **Mono**: Geist Mono (`'Geist Mono', ui-monospace, 'SF Mono', monospace`)
+- Base: 14px / line-height 1.5
+- Font features: `cv11`, `ss01`
+- Numbers: `font-feature-settings: 'tnum'` para tabular
 
-- **Surface Tiers:** Backgrounds use the lightest neutral, while interactive cards and panels use pure white or slightly darker grays to create separation.
-- **Borders:** Containers are defined by 1px solid strokes (#E5E5EA). 
-- **Active Elevation:** Only the most critical floating elements (modals, dropdowns) use a tight, high-precision shadow with 10% opacity to suggest they are sitting directly above the workspace.
+---
 
-## Shapes
+## Layout
 
-The shape language is **Soft** (Level 1). This choice balances the industrial "hard" nature of logistics with the modern "soft" nature of intelligent software.
+```
+grid: 232px (sidebar fija) + minmax(0, 1fr) (contenido)
+main padding: 24px 32px 48px
+max-width contenido: 1400px
+```
 
-- **Standard Radius:** 4px (0.25rem) is the default for buttons, input fields, and small cards.
-- **Container Radius:** Larger panels or modals may use up to 8px (0.5rem) to soften the overall interface.
-- **The "Arrow" Motif:** Drawing from the logo, iconography and certain UI indicators (like status pips or chevron buttons) should utilize sharp angles to reinforce the concept of direction and movement.
+---
 
-## Components
+## Radii
 
-### Buttons
-- **Primary:** Solid Red (#FF3B30) with white text. High-impact, used for the main intent.
-- **Secondary:** Charcoal Gray (#1C1C1E) with white text. Used for persistent navigation actions.
-- **Tertiary/Ghost:** 1px gray border or no border. Used for secondary management tasks.
+```css
+--r-sm: 6px    /* nav items, chips pequeños */
+--r:    8px    /* botones, inputs, cards pequeñas */
+--r-lg: 12px   /* panels, KPI cards, modales */
+```
 
-### Status Chips
-Status chips are critical for logistics. They use a "Lightened Semantic" background with "Dark Semantic" text (e.g., a pale green background with dark green text for "Delivered").
+---
 
-### Input Fields
-Fields feature a 1px border and 4px corner radius. When focused, the border changes to the Primary Red with a subtle 2px outer glow. Labels are always positioned above the field in the **label-md** typography style.
+## Componentes principales
 
-### Logistics Cards
-Cards are the primary container for shipment data. They must include a clear header, a status chip in the top right, and a "Progress Bar" component when applicable to show transit completion.
+### KPI Cards
+- `background: var(--surface)` + `border: 1px solid var(--border)` + `border-radius: var(--r-lg)`
+- Variante `.alert`: border/bg en danger-tint cuando hay urgencia
+- Sparklines SVG en esquina inferior derecha
+- Delta badges: `.delta.up` (verde), `.delta.down` (rojo), `.delta.flat` (gris)
 
-### Data Tables
-Tables are the heart of the "Intelligence" aspect. They should feature "Zebra Striping" using the lightest neutral gray and provide "Sort" and "Filter" icons that appear on hover for each column header.
+### Pills de estado
+```
+.pill.ok      → ok-tint bg, ok text, ok-soft border
+.pill.warn    → warn-tint bg
+.pill.danger  → danger-tint bg
+.pill.info    → info-tint bg
+.pill.neutral → surface-2 bg
+```
+
+### Carrier badges
+```
+.carrier-mark.effi   → #FEE2E2 bg, #991B1B text
+.carrier-mark.guatex → #DBEAFE bg, #1E40AF text
+```
+
+### Botones
+```
+.btn          → surface bg, border, ink text
+.btn.primary  → ink bg, white text
+.btn.brand    → #DC2626 bg, white text
+.btn.danger   → danger text, danger-tint on hover
+.btn.sm       → padding reducido
+.btn.icon     → solo ícono, sin texto
+```
+
+### Tablas
+- Headers: 11px, uppercase, letter-spacing 0.05em, color muted, bg surface-2
+- Rows: hover con `var(--hover)`, `font-mono` para IDs y números
+- `.num` para columnas de números (text-align: right, tnum)
+
+### Filter bar
+- `.filterbar` con `.chip` pill-buttons
+- `.chip.active` → ink bg, white text
+
+### Sidebar nav
+- Item activo: `background: var(--side-active)` + borde izquierdo 2px rojo
+- Badge de conteo: `.nav-badge` rojo
+- User card al fondo con avatar gradiente rojo
+
+---
+
+## Pantallas diseñadas
+
+| Ruta | Pantalla | Archivo |
+|------|----------|---------|
+| `/` | Centro Operativo | `screen-centro.jsx` |
+| `/attention` | Requiere Atención | `screen-attention.jsx` |
+| `/analytics` | Analytics | `screen-analytics.jsx` |
+| `/runs` | Historial de corridas | `screen-extras.jsx` |
+| `/runs/<id>` | Detalle de corrida | `screen-rest.jsx` |
+| `/run/new` | Nueva corrida | `screen-rest.jsx` |
+| `/run/progress/<token>` | Progreso en vivo | `screen-extras.jsx` |
+| `/rules` | Motor de reglas | `screen-rest.jsx` |
+| `/guides/<guia>` | Detalle de guía | `screen-extras.jsx` |
+| `/clients/<cliente>` | Detalle de cliente | `screen-extras.jsx` |
+| `/analytics/por-recoger` | Por recoger | `screen-extras.jsx` |
+
+---
+
+## Notas de implementación
+
+- El CSS embebido actual de `v0.3/vaecos_v03/render.py` se reemplaza por Jinja2 templates + `styles.css` externo.
+- Los textos que referencian "Notion" en el diseño (ej: "cambios en Notion") se actualizan en Fase 2 cuando se retire Notion del flujo.
+- Los iconos están en `docs/design-system/project/app/icons.jsx` — son SVG inline, no requieren librería externa.
+- Dark mode se activa con `data-theme="dark"` en `<html>` — no requiere JS framework.
+- Los datos de ejemplo están en `docs/design-system/project/app/data.js` — referencia para los queries SQLite necesarios.

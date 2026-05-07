@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "macros.html" import result_pill, carrier_badge %}
+{% block title %}Centro Operativo{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Centro Operativo</div>
+    {% if latest %}
+    <div class="page-sub">Corrida #{{ latest['id'] }} · {{ latest['started_at'] | fmt_ts }}{% if duration_text %} · {{ duration_text }}{% endif %}</div>
+    {% else %}
+    <div class="page-sub">Sin corridas registradas.</div>
+    {% endif %}
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('dashboard.attention') }}" class="btn">Ver que requiere atención</a>
+    <a href="{{ url_for('dashboard.run_new') }}" class="btn">Nueva corrida</a>
+    <a href="{{ url_for('dashboard.runs') }}" class="btn">Historial</a>
+  </div>
+</div>
+
+{% if created %}
+<div class="banner info" style="margin-bottom:16px;">Corrida ejecutada correctamente.</div>
+{% endif %}
+
+{% if latest %}
+  {% if needs_attention > 0 %}
+  <div class="banner danger" style="margin-bottom:16px;">
+    {{ needs_attention }} guía(s) requieren atención en la última corrida.
+  </div>
+  {% else %}
+  <div class="banner info" style="margin-bottom:16px;">
+    Sin guías que requieran atención en la última corrida.
+  </div>
+  {% endif %}
+
+  <div class="kpi-grid" style="margin-bottom:20px;">
+    <div class="kpi">
+      <div class="kpi-label">Última corrida</div>
+      <div class="kpi-value">#{{ latest['id'] }}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Procesadas</div>
+      <div class="kpi-value">{{ latest['total_processed'] }}</div>
+    </div>
+    <div class="kpi {% if needs_attention > 0 %}alert{% endif %}">
+      <div class="kpi-label">Requieren atención</div>
+      <div class="kpi-value">{{ needs_attention }}</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Sin cambios</div>
+      <div class="kpi-value">{{ unchanged }}</div>
+    </div>
+  </div>
+
+  {% if top_guides %}
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Guías con más cambios históricos</div>
+    </div>
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Guía</th>
+            <th class="num">Cambios acumulados</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in top_guides %}
+          <tr>
+            <td><a href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">{{ row['guia'] }}</a></td>
+            <td class="num mono">{{ row['total_cambios'] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if trend_svg %}
+  <div style="margin-top:16px;">
+    {{ trend_svg | safe }}
+  </div>
+  {% endif %}
+
+{% else %}
+<div class="panel">
+  <div class="panel-body">
+    <div class="empty">No hay corridas registradas. Ejecuta una nueva corrida para empezar.</div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

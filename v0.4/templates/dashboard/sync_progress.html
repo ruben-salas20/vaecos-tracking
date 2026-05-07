@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Sincronizando con Notion{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Sincronización con Notion</div>
+    <div class="page-sub" id="syncStatusText">Iniciando…</div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-body">
+    <div class="progress-container" id="progressBlock">
+      <div class="spinner" aria-hidden="true"></div>
+      <div class="muted">Trayendo todas las guías desde Notion. Esto suele tardar entre 5 y 15 segundos.</div>
+    </div>
+
+    <div id="resultBlock" style="display:none;">
+      <div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px;">
+        <div class="kpi"><div class="kpi-label">Leídas</div><div class="kpi-value" id="kRead">—</div></div>
+        <div class="kpi"><div class="kpi-label">Nuevas</div><div class="kpi-value" id="kIns">—</div></div>
+        <div class="kpi"><div class="kpi-label">Actualizadas</div><div class="kpi-value" id="kUpd">—</div></div>
+        <div class="kpi"><div class="kpi-label">Sin cambios</div><div class="kpi-value" id="kUnch">—</div></div>
+        <div class="kpi"><div class="kpi-label">Archivadas</div><div class="kpi-value" id="kArc">—</div></div>
+      </div>
+      <div class="row" style="gap:8px;">
+        <a href="{{ url_for('dashboard.all_guides') }}" class="btn primary">Ver todas las guías</a>
+        <a href="{{ url_for('dashboard.home') }}" class="btn">Inicio</a>
+      </div>
+    </div>
+
+    <div id="errorBlock" style="display:none;">
+      <div class="banner danger" id="errorMsg" style="margin-bottom:12px;"></div>
+      <a href="{{ url_for('dashboard.all_guides') }}" class="btn">Volver</a>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var token = {{ token | tojson }};
+  var statusUrl = "{{ url_for('runs.sync_status', token='__T__') }}".replace('__T__', token);
+
+  function poll() {
+    fetch(statusUrl, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.status === 'done') {
+          document.getElementById('progressBlock').style.display = 'none';
+          document.getElementById('syncStatusText').textContent = 'Sincronización completada.';
+          var s = data.stats || {};
+          document.getElementById('kRead').textContent = s.read || 0;
+          document.getElementById('kIns').textContent = s.inserted || 0;
+          document.getElementById('kUpd').textContent = s.updated || 0;
+          document.getElementById('kUnch').textContent = s.unchanged || 0;
+          document.getElementById('kArc').textContent = s.archived || 0;
+          document.getElementById('resultBlock').style.display = '';
+          return;
+        }
+        if (data.status === 'error') {
+          document.getElementById('progressBlock').style.display = 'none';
+          document.getElementById('syncStatusText').textContent = 'Error durante la sincronización.';
+          document.getElementById('errorMsg').textContent = data.error || 'Sin detalles.';
+          document.getElementById('errorBlock').style.display = '';
+          return;
+        }
+        setTimeout(poll, 1500);
+      })
+      .catch(function () { setTimeout(poll, 2500); });
+  }
+  poll();
+})();
+</script>
+{% endblock %}

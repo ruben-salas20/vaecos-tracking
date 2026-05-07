@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% from "macros.html" import carrier_badge, result_pill %}
+{% block title %}Todas las guías{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Todas las guías</div>
+    <div class="page-sub">
+      Snapshot local sincronizado desde Notion.
+      {% if counts.last_sync %}
+      Última sincronización: <span class="mono">{{ counts.last_sync | fmt_ts }}</span>.
+      {% else %}
+      <span class="muted">Sin sincronización todavía — pulsá el botón para empezar.</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="page-actions">
+    <form method="post" action="{{ url_for('runs.sync_notion') }}" style="display:inline;">
+      <button type="submit" class="btn primary">Sincronizar con Notion</button>
+    </form>
+  </div>
+</div>
+
+<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;">
+  <div class="kpi">
+    <div class="kpi-label">Total guías</div>
+    <div class="kpi-value">{{ counts.total }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Archivadas</div>
+    <div class="kpi-value">{{ counts.archived }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Mostradas</div>
+    <div class="kpi-value">{{ rows | length }}</div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-body">
+    <form method="get" action="{{ url_for('dashboard.all_guides') }}" class="filter-form" style="background:transparent;border:none;padding:0;">
+      <label>
+        <span>Estado</span>
+        <select class="input" name="estado">
+          <option value="">— Todos —</option>
+          {% for s in states %}
+          <option value="{{ s.estado_novedad }}" {% if s.estado_novedad == estado %}selected{% endif %}>
+            {{ s.estado_novedad }} ({{ s.n }})
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>Carrier</span>
+        <select class="input" name="carrier">
+          <option value="">— Todos —</option>
+          <option value="effi" {% if carrier == 'effi' %}selected{% endif %}>Effi</option>
+          <option value="guatex" {% if carrier == 'guatex' %}selected{% endif %}>Guatex</option>
+        </select>
+      </label>
+      <label>
+        <span>Buscar</span>
+        <input class="input" type="text" name="q" value="{{ q | e }}" placeholder="cliente, guía o teléfono">
+      </label>
+      <label style="flex-direction:row;align-items:center;gap:6px;padding-top:18px;">
+        <input type="checkbox" name="archived" value="1" {% if include_archived %}checked{% endif %}>
+        <span style="text-transform:none;font-size:12px;">Incluir archivadas</span>
+      </label>
+      <button type="submit" class="btn primary">Aplicar</button>
+      <a href="{{ url_for('dashboard.all_guides') }}" class="btn">Limpiar</a>
+    </form>
+  </div>
+</div>
+
+{% if rows %}
+<div class="panel">
+  <div class="panel-body flush">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Guía</th><th>Cliente</th><th>Teléfono</th>
+          <th>Estado novedad</th><th>Auto-track</th>
+          <th>Producto</th><th>Cant.</th><th>Valor</th>
+          <th>Carrier</th><th>Notas</th><th>Última corrida</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in rows %}
+        <tr {% if g.archived %}style="opacity:.55;"{% endif %}>
+          <td class="mono"><a href="{{ url_for('dashboard.guide_detail', guia=g.guia) }}">{{ g.guia | e }}</a></td>
+          <td><a href="{{ url_for('dashboard.client_detail', cliente=g.cliente) }}">{{ g.cliente | e }}</a></td>
+          <td class="mono">
+            {% if g.telefono %}
+            <a href="{{ url_for('dashboard.search', q=g.telefono) }}">{{ g.telefono }}</a>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td>
+            <select class="input estado-quick-edit" data-guia="{{ g.guia | e }}" data-prev="{{ g.estado_novedad or '' | e }}">
+              {% for opt in estado_options %}
+              <option value="{{ opt | e }}" {% if opt == g.estado_novedad %}selected{% endif %}>{{ opt }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td>
+            {% if g.estado_novedad in excluded_states %}
+            <span class="pill neutral" title="El motor no procesa este estado">Manual</span>
+            {% else %}
+            <span class="pill ok"><span class="dot"></span>Auto</span>
+            {% endif %}
+          </td>
+          <td class="cell-trunc" title="{{ g.producto | e }}">{{ g.producto | e_trunc }}</td>
+          <td class="mono">{{ g.cantidad if g.cantidad is not none else '' }}</td>
+          <td class="mono">{{ '%g' % g.valor if g.valor is not none else '' }}</td>
+          <td>{{ carrier_badge(g.carrier) }}</td>
+          <td class="mono">
+            {% set nc = notes_counts.get(g.guia, 0) %}
+            {% if nc > 0 %}
+            <a href="{{ url_for('dashboard.guide_detail', guia=g.guia) }}#notas" title="Ver notas">
+              <span class="pill info">{{ nc }}</span>
+            </a>
+            {% else %}
+            <a href="{{ url_for('dashboard.guide_detail', guia=g.guia) }}#notas" class="muted" title="Agregar nota">+</a>
+            {% endif %}
+          </td>
+          <td>
+            {% if g.ultima_corrida %}
+            {{ result_pill(g.ultimo_resultado) }} <span class="muted" style="font-size:11px;">{{ g.ultima_corrida | fmt_ts }}</span>
+            {% else %}<span class="muted">Nunca</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="panel"><div class="panel-body">
+  <div class="empty">
+    {% if counts.total == 0 %}
+    No hay guías locales aún. Pulsá <strong>Sincronizar con Notion</strong> arriba para traer todas.
+    {% else %}
+    No hay guías que coincidan con los filtros aplicados.
+    {% endif %}
+  </div>
+</div></div>
+{% endif %}
+{% endblock %}

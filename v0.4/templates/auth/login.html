@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Iniciar sesión — VAECOS</title>
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('vaecos.theme');
+        var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body class="login-page">
+<div class="login-card">
+  <div class="login-brand">
+    <div class="brand-mark" style="width:36px;height:36px;border-radius:8px;background:var(--brand);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+    </div>
+    <div>
+      <div style="font-weight:700;font-size:16px;color:var(--ink);">VAECOS</div>
+      <div style="font-size:12px;color:var(--muted);">Tracking · v0.4</div>
+    </div>
+  </div>
+  <h1 style="font-size:20px;font-weight:600;margin:0 0 4px;">Iniciar sesión</h1>
+  <p style="color:var(--muted);font-size:13px;margin:0 0 20px;">Ingresá con tu cuenta de VAECOS.</p>
+  {% if error %}
+  <div class="banner danger" style="margin-bottom:16px;">{{ error }}</div>
+  {% endif %}
+  <form method="post" action="{{ url_for('auth.login') }}">
+    <div style="margin-bottom:14px;">
+      <label class="field-label" for="email">Email</label>
+      <input class="input" type="email" id="email" name="email" required autofocus placeholder="admin@vaecos.com">
+    </div>
+    <div style="margin-bottom:20px;">
+      <label class="field-label" for="password">Contraseña</label>
+      <input class="input" type="password" id="password" name="password" required placeholder="••••••••">
+    </div>
+    <button type="submit" class="btn primary" style="width:100%;justify-content:center;">Ingresar</button>
+  </form>
+</div>
+</body>
+</html>

@@ -1,0 +1,76 @@
+{% macro result_pill(resultado) %}
+{% set mapping = {
+  'changed': ('ok', 'Con cambio'),
+  'unchanged': ('neutral', 'Sin cambios'),
+  'manual_review': ('warn', 'Revisión manual'),
+  'parse_error': ('danger', 'Error de parseo'),
+  'error': ('danger', 'Error'),
+} %}
+{% set item = mapping.get(resultado, ('neutral', resultado)) %}
+<span class="pill {{ item[0] }}"><span class="dot"></span>{{ item[1] }}</span>
+{% endmacro %}
+
+{% macro carrier_badge(name) %}
+{% set n = ((name or 'effi') | lower) %}
+<span class="carrier"><span class="carrier-mark {{ n }}">{{ n[0] | upper }}</span><span>{{ n }}</span></span>
+{% endmacro %}
+
+{% macro mode_badge(mode) %}
+{% if mode == 'apply' %}
+<span class="pill ok"><span class="dot"></span>Apply</span>
+{% else %}
+<span class="pill neutral"><span class="dot"></span>Dry-run</span>
+{% endif %}
+{% endmacro %}
+
+{% macro guide_notes_panel(guia, notes, current_user) %}
+<div class="notes-panel" data-guia="{{ guia | e }}">
+  <div class="notes-header">
+    <div class="notes-title">Notas <span class="notes-count" id="notesCount">({{ notes | length }})</span></div>
+    <div class="notes-sub muted">Comentarios persistentes sobre esta guía. Se mantienen entre corridas.</div>
+  </div>
+  <ul class="notes-list" id="notesList">
+    {% for n in notes %}
+    <li class="note-item" data-note-id="{{ n.id }}">
+      <div class="note-meta">
+        <span class="note-author">{{ n.autor | e }}</span>
+        <span class="note-date muted">· {{ n.created_at | fmt_ts }}</span>
+        {% if n.edited_at %}<span class="note-edited muted">· editada</span>{% endif %}
+        {% if n.autor == current_user.email or current_user.role == 'admin' %}
+        <button type="button" class="note-delete-btn" title="Borrar nota"
+                onclick="deleteNote({{ n.id }}, '{{ guia | e }}')">×</button>
+        {% endif %}
+      </div>
+      <div class="note-body">{{ n.body | e }}</div>
+    </li>
+    {% endfor %}
+    {% if not notes %}
+    <li class="note-empty muted" id="notesEmpty">Sin notas todavía. Agregá la primera abajo.</li>
+    {% endif %}
+  </ul>
+  <form class="note-form" id="noteForm" onsubmit="return submitNote(event, '{{ guia | e }}')">
+    <textarea name="body" placeholder="Escribí una nota… (Ctrl+Enter para guardar)" rows="2" required></textarea>
+    <div class="note-form-actions">
+      <button type="submit" class="btn primary">Agregar nota</button>
+    </div>
+  </form>
+</div>
+{% endmacro %}
+
+{% macro notas_cell(row, run_id) %}
+{% set guia = row['guia'] %}
+{% set nota = row['notas_operador'] or '' %}
+<div class="notas-cell">
+  <span class="notas-text" id="notas-text-{{ guia }}">{% if nota %}{{ nota | e }}{% else %}<span class="muted">—</span>{% endif %}</span>
+  <button class="notas-edit-btn btn btn-sm" type="button" onclick="toggleNotasForm('{{ guia | e }}')" title="Editar nota">&#9998;</button>
+  <form id="notas-form-{{ guia }}" class="notas-form" method="post"
+        action="{{ url_for('runs.update_notas', run_id=run_id, guia=guia) }}"
+        style="display:none">
+    <textarea name="notas_operador" rows="2">{{ nota | e }}</textarea>
+    <div class="notas-form-actions">
+      <button type="submit" class="btn">Guardar</button>
+      <button type="button" class="btn" onclick="toggleNotasForm('{{ guia | e }}')">Cancelar</button>
+    </div>
+  </form>
+</div>
+{% endmacro %}

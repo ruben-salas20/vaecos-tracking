@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Resultado de importación{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Resultado de importación</div>
+    <div class="page-sub">{{ filename }}</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('import_guides.import_form') }}" class="btn">Importar otro archivo</a>
+    <a href="{{ url_for('dashboard.home') }}" class="btn primary">Ir al inicio</a>
+  </div>
+</div>
+
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+  <div class="kpi {% if created %}ok{% endif %}">
+    <div class="kpi-label">Creadas en Notion</div>
+    <div class="kpi-value">{{ created | length }}</div>
+  </div>
+  <div class="kpi {% if failed %}alert{% endif %}">
+    <div class="kpi-label">Fallaron al crear</div>
+    <div class="kpi-value">{{ failed | length }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Omitidas (ya existían)</div>
+    <div class="kpi-value">{{ skipped_count }}</div>
+  </div>
+  <div class="kpi {% if parse_errors_count %}alert{% endif %}">
+    <div class="kpi-label">Errores de archivo</div>
+    <div class="kpi-value">{{ parse_errors_count }}</div>
+  </div>
+</div>
+
+{% if created %}
+<div class="import-section">
+  <h3 style="font-size:14px;font-weight:600;margin-bottom:8px;">Creadas en Notion ({{ created | length }})</h3>
+  <div class="panel">
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead><tr><th>Guía</th><th>Cliente</th><th>Teléfono</th><th>Producto</th><th>Cant.</th><th>Valor</th><th>Estado</th><th>Page</th></tr></thead>
+        <tbody>
+          {% for g in created %}
+          <tr>
+            <td class="mono">{{ g.guia | e }}</td>
+            <td>{{ g.cliente | e }}</td>
+            <td class="mono">{{ g.telefono | e }}</td>
+            <td>{{ g.producto | e_trunc }}</td>
+            <td class="mono">{{ g.cantidad }}</td>
+            <td class="mono">{{ g.valor | e }}</td>
+            <td>{{ g.estado_inicial | e }}</td>
+            <td class="mono muted" style="font-size:11px;">{{ g.page_id[:8] }}…</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if failed %}
+<div class="import-section">
+  <h3 style="font-size:14px;font-weight:600;margin-bottom:8px;color:var(--danger);">Fallaron al crear ({{ failed | length }})</h3>
+  <div class="panel">
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead><tr><th>Guía</th><th>Cliente</th><th>Estado</th><th>Error</th></tr></thead>
+        <tbody>
+          {% for g in failed %}
+          <tr>
+            <td class="mono">{{ g.guia | e }}</td>
+            <td>{{ g.cliente | e }}</td>
+            <td>{{ g.estado_inicial | e }}</td>
+            <td style="color:var(--danger);font-size:12px;">{{ g.error | e }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<div class="banner warning" style="margin-top:12px;">
+  <strong>Tip:</strong> si el error menciona <code>option does not exist</code>, agregá esa opción manualmente al campo
+  <em>Estado novedad</em> o <em>Transportista</em> en Notion y volvé a importar el archivo.
+</div>
+{% endif %}
+
+{% if not created and not failed %}
+<div class="panel"><div class="panel-body">
+  <div class="empty">No había guías nuevas para crear en Notion.</div>
+</div></div>
+{% endif %}
+{% endblock %}

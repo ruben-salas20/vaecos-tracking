@@ -50,8 +50,8 @@ class RunRepository:
             INSERT INTO run_results (
                 run_id, guia, cliente, carrier, estado_notion_actual, estado_effi_actual,
                 estado_propuesto, resultado, motivo, requiere_accion,
-                actualizacion_notion, error
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                actualizacion_notion, error, telefono
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
@@ -66,6 +66,7 @@ class RunRepository:
                 result.requiere_accion,
                 result.actualizacion_notion,
                 result.error,
+                result.telefono,
             ),
         )
         self.connection.commit()

@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% from "macros.html" import result_pill, carrier_badge, mode_badge, notas_cell, guide_notes_panel %}
+{% block title %}Historial — {{ guia }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Historial — {{ guia }}</div>
+    <div class="page-sub">
+      Seguimiento histórico de una guía a través de las corridas almacenadas.
+      {% if telefono %}
+      · DPI / Teléfono:
+      <a href="{{ url_for('dashboard.search', q=telefono) }}" class="mono">{{ telefono }}</a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="page-actions">
+    <form method="post" action="{{ url_for('runs.run_new') }}" style="display:inline;">
+      <input type="hidden" name="guides" value="{{ guia }}">
+      <input type="hidden" name="mode" value="dry-run">
+      <button type="submit" class="btn">Correr (dry-run)</button>
+    </form>
+    <form method="post" action="{{ url_for('runs.run_new') }}" style="display:inline;"
+          onsubmit="return confirm('¿Correr esta guía y aplicar cambios a Notion?')">
+      <input type="hidden" name="guides" value="{{ guia }}">
+      <input type="hidden" name="mode" value="apply">
+      <button type="submit" class="btn primary">Correr esta guía (apply)</button>
+    </form>
+    <a href="{{ url_for('dashboard.runs') }}" class="btn">Ver corridas</a>
+  </div>
+</div>
+
+{% if guide_row %}
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-body">
+    <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:240px;">
+        <div class="kpi-label">Estado novedad actual</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+          <select class="input estado-edit-detail" data-guia="{{ guia | e }}" data-prev="{{ guide_row.estado_novedad or '' | e }}" style="max-width:280px;">
+            {% for opt in estado_options %}
+            <option value="{{ opt | e }}" {% if opt == guide_row.estado_novedad %}selected{% endif %}>{{ opt }}</option>
+            {% endfor %}
+          </select>
+          <span class="muted" id="stateUpdateStatus" style="font-size:12px;"></span>
+        </div>
+        <div class="muted" style="font-size:11px;margin-top:6px;">
+          Última sincronización: {{ guide_row.last_synced_at | fmt_ts }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="panel" id="notas" style="margin-bottom:20px;scroll-margin-top:20px;">
+  <div class="panel-body">
+    {{ guide_notes_panel(guia, notes, current_user) }}
+  </div>
+</div>
+
+{% if edits %}
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-body">
+    <div style="font-size:14px;font-weight:600;margin-bottom:8px;">Historial de cambios manuales ({{ edits | length }})</div>
+    <table class="tbl" style="font-size:12px;">
+      <thead><tr><th>Cuándo</th><th>Autor</th><th>Campo</th><th>Antes</th><th>Después</th><th>Sync</th></tr></thead>
+      <tbody>
+        {% for e in edits %}
+        <tr>
+          <td>{{ e.created_at | fmt_ts }}</td>
+          <td class="mono">{{ e.autor | e }}</td>
+          <td>{{ e.campo }}</td>
+          <td class="muted">{{ e.valor_anterior | e if e.valor_anterior else '—' }}</td>
+          <td>{{ e.valor_nuevo | e }}</td>
+          <td>
+            {% if e.sync_ok %}
+            <span class="pill ok"><span class="dot"></span>OK</span>
+            {% else %}
+            <span class="pill danger" title="{{ e.error_msg | e }}">Falló</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if not rows %}
+<div class="panel"><div class="panel-body"><div class="empty">No hay historial para la guía {{ guia }}.</div></div></div>
+{% else %}
+
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">
+  <div class="kpi">
+    <div class="kpi-label">Cliente</div>
+    <div class="kpi-value" style="font-size:16px;">{{ rows[0]['cliente'] | e }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Último resultado</div>
+    <div class="kpi-value" style="font-size:16px;">{{ rows[0]['resultado'] }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Último estado propuesto</div>
+    <div class="kpi-value" style="font-size:16px;">{{ rows[0]['estado_propuesto'] or 'N/D' }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Última corrida</div>
+    <div class="kpi-value" style="font-size:16px;">#{{ rows[0]['run_id'] }}</div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-body flush">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Corrida</th><th>Inicio</th><th>Modo</th><th>Transportista</th><th>Resultado</th>
+          <th>Notion</th><th>Effi</th><th>Propuesto</th><th>Motivo</th>
+          <th>Último estado</th><th>Notas operadora</th><th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td><a href="{{ url_for('dashboard.run_detail', run_id=row['run_id']) }}">#{{ row['run_id'] }}</a></td>
+          <td>{{ row['started_at'] | fmt_ts }}</td>
+          <td>{{ mode_badge(row['mode']) }}</td>
+          <td>{{ carrier_badge(row['carrier']) }}</td>
+          <td>{{ result_pill(row['resultado']) }}</td>
+          <td>{{ row['estado_notion_actual'] or 'N/D' | e }}</td>
+          <td>{{ row['estado_effi_actual'] or 'N/D' | e }}</td>
+          <td>{{ row['estado_propuesto'] or 'N/D' | e }}</td>
+          <td>{{ row['motivo'] | e_trunc }}</td>
+          <td>{{ format_date_short(row['latest_status_date']) }}</td>
+          <td>{{ notas_cell(row, row['run_id']) }}</td>
+          <td>{{ row['error'] | e_trunc if row['error'] else '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

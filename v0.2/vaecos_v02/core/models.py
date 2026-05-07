@@ -12,6 +12,10 @@ class NotionClientRecord:
     estado_novedad: str
     carrier: str = "effi"
     fecha_ultimo_seguimiento: str | None = None
+    telefono: str = ""
+    producto: str = ""
+    valor: float | None = None
+    cantidad: int | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +99,7 @@ class ProcessingResult:
     actualizacion_notion: str = ""
     error: str = ""
     carrier: str = "effi"
+    telefono: str = ""
 
 
 @dataclass(frozen=True)

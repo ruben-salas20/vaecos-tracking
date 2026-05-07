@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Usuarios{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Usuarios</div>
+    <div class="page-sub">Gestión de cuentas de acceso al sistema.</div>
+  </div>
+</div>
+
+<div class="users-layout">
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Usuarios registrados ({{ users | length }})</div>
+    </div>
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Email</th><th>Nombre</th><th>Rol</th><th>Estado</th>
+            <th>Creado</th><th>Creado por</th><th style="min-width:240px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in users %}
+          <tr>
+            <td class="mono">{{ user['email'] | e }}</td>
+            <td>{{ user['name'] | e }}</td>
+            <td>
+              {% if user['role'] == 'admin' %}
+              <span class="pill info"><span class="dot"></span>admin</span>
+              {% else %}
+              <span class="pill neutral"><span class="dot"></span>user</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if user['active'] %}
+              <span class="pill ok"><span class="dot"></span>Activo</span>
+              {% else %}
+              <span class="pill danger"><span class="dot"></span>Inactivo</span>
+              {% endif %}
+            </td>
+            <td>{{ user['created_at'] | fmt_ts }}</td>
+            <td class="muted">{{ user['created_by'] | e }}</td>
+            <td>
+              {% if user['id'] != current_user.id %}
+              <div class="row-actions">
+                <form method="post" action="{{ url_for('users.users_toggle', user_id=user['id']) }}">
+                  <button type="submit" class="btn btn-sm {% if user['active'] %}danger{% endif %}">
+                    {{ 'Desactivar' if user['active'] else 'Activar' }}
+                  </button>
+                </form>
+                <a href="{{ url_for('users.users_reset_password', user_id=user['id']) }}" class="btn btn-sm">Restablecer</a>
+                <form method="post" action="{{ url_for('users.users_delete', user_id=user['id']) }}"
+                      onsubmit="return confirm('¿Eliminar al usuario {{ user['name'] | e }}? Esta acción no se puede deshacer.')">
+                  <button type="submit" class="btn btn-sm danger">Eliminar</button>
+                </form>
+              </div>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">No hay usuarios registrados.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Nuevo usuario</div>
+    </div>
+    <div class="panel-body">
+      <form method="post" action="{{ url_for('users.users_create') }}" class="fieldgroup">
+        <div>
+          <label class="field-label" for="email">Email</label>
+          <input class="input" type="email" id="email" name="email" required placeholder="usuario@vaecos.com">
+        </div>
+        <div>
+          <label class="field-label" for="name">Nombre</label>
+          <input class="input" type="text" id="name" name="name" required placeholder="Nombre completo">
+        </div>
+        <div>
+          <label class="field-label" for="password">Contraseña</label>
+          <input class="input" type="password" id="password" name="password" required minlength="8">
+          <div class="field-help">Mínimo 8 caracteres.</div>
+        </div>
+        <div>
+          <label class="field-label" for="role">Rol</label>
+          <select class="input" id="role" name="role">
+            <option value="user">user — acceso estándar</option>
+            <option value="admin">admin — gestión de usuarios</option>
+          </select>
+        </div>
+        <button type="submit" class="btn primary">Crear usuario</button>
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

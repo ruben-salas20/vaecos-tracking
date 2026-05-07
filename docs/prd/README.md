@@ -1,8 +1,11 @@
-# VAECOS Tracking PRD v1
+# VAECOS Tracking PRD
 
-Este directorio contiene el PRD dividido en secciones para facilitar mantenimiento, versionado y ejecución.
+> **Este directorio contiene el PRD v1.0 (2026-05-01) como referencia histórica.**
+> El PRD activo y actualizado es `docs/PRD.md` (v2.0, 2026-05-06).
+> Para el roadmap estratégico ver `docs/roadmap-estrategico.md`.
+> Para la arquitectura ver `docs/ARCHITECTURE.md`.
 
-## Indice
+## Indice (v1.0 — histórico)
 
 1. `01-contexto-vision.md`
 2. `02-objetivos-usuarios-problemas.md`
@@ -13,15 +16,8 @@ Este directorio contiene el PRD dividido en secciones para facilitar mantenimien
 7. `07-metricas-roadmap-riesgos.md`
 8. `08-decisiones-preguntas-abiertas.md`
 
-## Como usar este PRD
-
-- Leer `01` a `03` para alineacion de negocio-producto.
-- Usar `04` y `05` para definicion de backlog tecnico.
-- Usar `06` y `07` para plan de implementacion y control.
-- Revisar `08` al inicio de cada ciclo para cerrar decisiones pendientes.
-
 ## Estado
 
-- Version: `v1.0`
+- Version: `v1.0` (histórico)
 - Fecha: `2026-05-01`
-- Owner: `Operacion VAECOS`
+- Supersedido por: `docs/PRD.md` v2.0

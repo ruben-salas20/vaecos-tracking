@@ -19,6 +19,8 @@ class NotionProvider:
         self.notion_version = notion_version
         self.data_source_id = data_source_id
         self.query_kind = query_kind
+        # Lazy-loaded schema for case-insensitive select option resolution.
+        self._select_options: dict[str, list[str]] | None = None
 
     def fetch_selected_guides(
         self, target_guides: list[str], excluded_statuses: set[str]
@@ -92,6 +94,149 @@ class NotionProvider:
         }
         self._request_json(endpoint, "PATCH", payload)
 
+    def update_estado_novedad(self, page_id: str, estado_novedad: str) -> None:
+        """Update only the Estado novedad field — case-insensitive option resolution."""
+        resolved = self._resolve_select_option("Estado novedad", estado_novedad)
+        endpoint = f"https://api.notion.com/v1/pages/{page_id}"
+        payload = {
+            "properties": {
+                "Estado novedad": {"select": {"name": resolved}},
+            }
+        }
+        try:
+            self._request_json(endpoint, "PATCH", payload)
+        except error.HTTPError as exc:
+            try:
+                body = exc.read().decode("utf-8") if hasattr(exc, "read") else ""
+            except Exception:
+                body = ""
+            detail = f"{exc.code} {exc.reason}"
+            if body:
+                try:
+                    parsed = json.loads(body)
+                    msg = parsed.get("message") or parsed.get("code") or ""
+                    if msg:
+                        detail = f"{detail} — {msg}"
+                except Exception:
+                    pass
+            raise RuntimeError(f"Notion update failed: {detail}")
+
+    def create_guide_page(
+        self,
+        guia: str,
+        cliente: str,
+        carrier: str = "effi",
+        estado_novedad: str = "",
+        telefono: str = "",
+        valor: str = "",
+        cantidad: int = 0,
+        producto: str = "",
+    ) -> str:
+        """Create a new page in the Notion data source for a guide.
+        Returns the new page_id. Raises RuntimeError on failure.
+
+        Note: `carrier` is accepted for API symmetry but is not written to Notion
+        because the data source does not have a Transportista field. The tracking
+        engine reads it from a select if present, defaulting to 'effi' otherwise.
+        """
+        _ = carrier  # accepted but not persisted (no field in data source)
+
+        properties: dict[str, Any] = {
+            "Nombre": {"title": [{"text": {"content": cliente or guia}}]},
+            "No. Guía": {"rich_text": [{"text": {"content": guia}}]},
+        }
+        if estado_novedad:
+            resolved = self._resolve_select_option("Estado novedad", estado_novedad)
+            properties["Estado novedad"] = {"select": {"name": resolved}}
+        if telefono:
+            try:
+                properties["Teléfono"] = {"number": int(telefono)}
+            except (ValueError, TypeError):
+                pass
+        if valor:
+            try:
+                properties["Valor"] = {"number": float(valor)}
+            except (ValueError, TypeError):
+                pass
+        if cantidad:
+            try:
+                properties["Cant."] = {"number": int(cantidad)}
+            except (ValueError, TypeError):
+                pass
+        if producto:
+            properties["Producto"] = {
+                "rich_text": [{"text": {"content": producto}}]
+            }
+
+        payload = {
+            "parent": {"data_source_id": self.data_source_id},
+            "properties": properties,
+        }
+        try:
+            response = self._request_json(
+                "https://api.notion.com/v1/pages", "POST", payload
+            )
+            return str(response.get("id", ""))
+        except error.HTTPError as exc:
+            try:
+                body = exc.read().decode("utf-8") if hasattr(exc, "read") else ""
+            except Exception:
+                body = ""
+            detail = f"{exc.code} {exc.reason}"
+            if body:
+                try:
+                    parsed = json.loads(body)
+                    msg = parsed.get("message") or parsed.get("code") or ""
+                    if msg:
+                        detail = f"{detail} — {msg}"
+                except Exception:
+                    pass
+            raise RuntimeError(f"Notion create failed: {detail}")
+
+    def _resolve_select_option(self, field: str, value: str) -> str:
+        """Match a value against the actual select options for `field`,
+        case-insensitively. Returns the canonical Notion option name when
+        a match is found, or the original value otherwise (which Notion
+        will reject with a clear error message)."""
+        target = value.strip()
+        if not target:
+            return target
+        self._load_select_options()
+        options = (self._select_options or {}).get(field, [])
+        target_lower = target.lower()
+        for opt in options:
+            if opt.lower() == target_lower:
+                return opt
+        return target
+
+    def _load_select_options(self) -> None:
+        """Lazily fetch the data source schema and cache select/status options."""
+        if self._select_options is not None:
+            return
+        try:
+            req = request.Request(
+                f"https://api.notion.com/v1/data_sources/{self.data_source_id}",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Notion-Version": self.notion_version,
+                },
+                method="GET",
+            )
+            with request.urlopen(req, timeout=15) as response:
+                schema = json.loads(response.read().decode("utf-8"))
+        except Exception:
+            self._select_options = {}
+            return
+        result: dict[str, list[str]] = {}
+        for name, prop in (schema.get("properties") or {}).items():
+            kind = prop.get("type")
+            if kind in ("select", "status"):
+                opts = prop.get(kind, {}).get("options", [])
+                result[name] = [
+                    str(o.get("name", "")) for o in opts if isinstance(o, dict)
+                ]
+        self._select_options = result
+
     def _query_once(self, start_cursor: str | None) -> dict[str, Any]:
         last_error: Exception | None = None
         for endpoint in self._query_endpoints():
@@ -155,6 +300,11 @@ class NotionProvider:
         carrier_raw = self._read_select(properties.get("Transportista")) or "effi"
         carrier = carrier_raw.strip().lower() or "effi"
         fecha_str = self._read_date(properties.get("Fecha \u00faltimo seguimiento"))
+        telefono = self._read_number(properties.get("Tel\u00e9fono"))
+        producto = self._read_rich_text(properties.get("Producto"))
+        valor = self._read_number_raw(properties.get("Valor"))
+        cantidad_raw = self._read_number_raw(properties.get("Cant."))
+        cantidad = int(cantidad_raw) if cantidad_raw is not None else None
         return NotionClientRecord(
             page_id=page_id,
             nombre=nombre,
@@ -162,7 +312,34 @@ class NotionProvider:
             estado_novedad=estado_novedad,
             carrier=carrier,
             fecha_ultimo_seguimiento=fecha_str or None,
+            telefono=telefono,
+            producto=producto,
+            valor=valor,
+            cantidad=cantidad,
         )
+
+    def fetch_all_pages(self) -> tuple[list[NotionClientRecord], dict[str, int]]:
+        """Fetch ALL pages without status filtering \u2014 used for the local guides snapshot."""
+        found: list[NotionClientRecord] = []
+        stats = {"read": 0, "valid": 0, "incomplete": 0}
+        next_cursor: str | None = None
+        while True:
+            response = self._query_once(next_cursor)
+            results = response.get("results", [])
+            if not isinstance(results, list):
+                break
+            for page in results:
+                stats["read"] += 1
+                record = self._parse_record(page)
+                if record is None:
+                    stats["incomplete"] += 1
+                    continue
+                found.append(record)
+                stats["valid"] += 1
+            if not response.get("has_more"):
+                break
+            next_cursor = response.get("next_cursor")
+        return found, stats
 
     @staticmethod
     def _read_title(prop: Any) -> str:
@@ -196,6 +373,35 @@ class NotionProvider:
             return ""
         select = prop.get("select")
         return str(select.get("name", "")).strip() if isinstance(select, dict) else ""
+
+    @staticmethod
+    def _read_number(prop: Any) -> str:
+        """Extract a number property as string. Returns '' if missing/null."""
+        if not isinstance(prop, dict):
+            return ""
+        n = prop.get("number")
+        if n is None:
+            return ""
+        # Notion returns floats; for telephone-like ints we want a clean string.
+        try:
+            if float(n).is_integer():
+                return str(int(n))
+        except (TypeError, ValueError):
+            pass
+        return str(n)
+
+    @staticmethod
+    def _read_number_raw(prop: Any) -> float | None:
+        """Extract a number property as float. Returns None if missing/null."""
+        if not isinstance(prop, dict):
+            return None
+        n = prop.get("number")
+        if n is None:
+            return None
+        try:
+            return float(n)
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _read_date(prop: Any) -> str:

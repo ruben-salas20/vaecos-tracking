@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Reglas{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Reglas en mantenimiento</div>
+    <div class="page-sub">La gestión web de reglas está deshabilitada temporalmente.</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('dashboard.home') }}" class="btn">Volver al inicio</a>
+  </div>
+</div>
+
+<div class="panel" style="max-width:580px;">
+  <div class="panel-body">
+    <p style="color:var(--muted);font-size:13px;margin:0;">
+      Por ahora no se pueden crear, editar ni previsualizar reglas desde la web.
+      Usa la operación normal del sistema hasta que este módulo vuelva a estar disponible.
+    </p>
+  </div>
+</div>
+{% endblock %}

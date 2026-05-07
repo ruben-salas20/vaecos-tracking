@@ -37,18 +37,55 @@
   - `apply-update`
 
 ### v0.3
-- Es la aplicación web local y ya es la interfaz principal en uso.
-- Dispara corridas usando la lógica de `v0.2`, en background con página de progreso.
-- Lee y escribe sobre la SQLite de `v0.2` (seeding inicial incluido).
-- Rutas principales:
+- Quedó como capa de compatibilidad. v0.4 lo importa para reusar `DashboardRepository`, `render.py` (charts) y la lógica de queries.
+- Sigue arrancable con `python v0.3/server.py` para fallback durante la transición, pero NO es la interfaz que la operadora usa.
+- Pendiente: archivar formalmente cuando la operadora valide v0.4 en uso real.
+
+### v0.4 (interfaz principal en uso)
+- Aplicación Flask 3.1 con blueprints, login, sesiones firmadas, modo oscuro, sidebar colapsable.
+- Reusa el motor de v0.2 directamente (sin reescribir nada del business engine) y el `DashboardRepository` de v0.3.
+- Arrancable con `python v0.4/server.py` o `iniciar_v04.bat`.
+- Estructura:
+  ```
+  v0.4/
+    server.py                       # entrypoint (dev: app.run, prod: waitress)
+    config.py                       # V04Settings + .env loader (incluye Notion vars)
+    app/
+      __init__.py                   # create_app() factory + bootstrap admin
+      auth/                         # /login, /logout, /change-password, decorators
+      dashboard/                    # 14 GETs migrados de v0.3 + /all-guides + /search
+      runs/                         # POST /run/new, progress, CSV export, /sync/*
+      import_guides/                # /import (upload, preview, confirm) + parser
+      users/                        # /users, /users/<id>/{toggle,delete,reset-password}
+      notion_helpers.py             # cache de opciones de Estado novedad (TTL 5 min)
+    templates/
+      base.html, macros.html, partials/{sidebar,flash}.html
+      auth/{login,change_password}.html
+      dashboard/{home,attention,analytics,runs,run_detail,run_new,run_progress,
+                 guide_detail,client_detail,rules_maintenance,
+                 all_guides,search,sync_progress}.html
+      import_guides/{import,import_preview,import_result}.html
+      users/{users,reset_password}.html
+    static/css/{styles.css,app.css} static/js/app.js
+  ```
+- Rutas (v0.4):
+  - `/login`, `/logout`, `/change-password`
   - `/` — centro operativo
-  - `/attention` — vista diaria de lo que requiere atención
-  - `/runs`, `/runs/<id>`
-  - `/run/new`, `/run/progress/<token>`
-  - `/guides/<guia>`, `/clients/<cliente>`
-  - `/analytics` — KPIs, tendencias y distribución por carrier
-  - `/rules`, `/rules/new`, `/rules/<id>/edit`, `/rules/<id>/history`, `/rules/preview` — edición sin tocar código
-  - `/static/*`, `/favicon.ico`
+  - `/attention` — vista diaria de atención
+  - `/all-guides` — snapshot completo de Notion con filtros + quick-edit de estado
+  - `/search` — buscador inteligente (guía / DPI / nombre)
+  - `/runs`, `/runs/<id>`, `/run/new`, `/run/progress/<token>`
+  - `/runs/<id>/results/<guia>/notas` — notas de corrida (AJAX)
+  - `/runs/<id>/export/effi` — CSV con BOM
+  - `/guides/<guia>` — detalle + dropdown de estado + panel de notas + audit trail
+  - `/guides/<guia>/notes` — POST/DELETE (AJAX)
+  - `/guides/<guia>/state` — POST atómico Notion+local+audit
+  - `/clients/<cliente>` — detalle con DPI persistido
+  - `/sync/notion` — POST background sync
+  - `/sync/progress/<token>` + `/sync/status/<token>` — UI + JSON polling
+  - `/import` — upload Excel del ERP, preview, confirm (crea páginas en Notion)
+  - `/users` (admin) — listar/crear/desactivar/eliminar/reset password
+  - `/analytics`, `/analytics/por-recoger`, `/rules*`
 
 ## Estructura actual importante
 
@@ -130,11 +167,14 @@
 - `python v0.2/cli.py apply-update`
 - `python v0.2/cli.py tui`
 
-### v0.3 principales
+### v0.3 principales (legacy, reusable como respaldo)
 - `python v0.3/server.py`
 - `python v0.3/server.py --check`
-- `iniciar.bat` (doble clic para arrancar)
-- `actualizar.bat` (doble clic para actualizar)
+
+### v0.4 principales (en uso real)
+- `python v0.4/server.py`
+- `iniciar_v04.bat` (doble clic para arrancar la app actual)
+- `actualizar.bat` (sigue funcionando — preserva `.env` y SQLite)
 
 ## Verificaciones actuales
 

@@ -143,6 +143,7 @@ def connect(db_path: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(str(db_path))
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA journal_mode=WAL")
     return connection
 
 
@@ -289,6 +290,106 @@ def _ensure_bodega_reciente_rule(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
+def _ensure_users_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "users"):
+        return
+    connection.execute("""
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user',
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            created_by TEXT
+        )
+    """)
+    connection.commit()
+
+
+def _ensure_guide_edits_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "guide_edits"):
+        return
+    connection.execute("""
+        CREATE TABLE guide_edits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guia TEXT NOT NULL,
+            autor TEXT NOT NULL,
+            campo TEXT NOT NULL,
+            valor_anterior TEXT,
+            valor_nuevo TEXT,
+            created_at TEXT NOT NULL,
+            sync_ok INTEGER NOT NULL DEFAULT 1,
+            error_msg TEXT
+        )
+    """)
+    connection.execute("CREATE INDEX idx_guide_edits_guia ON guide_edits (guia)")
+    connection.commit()
+
+
+def _ensure_guide_notes_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "guide_notes"):
+        return
+    connection.execute("""
+        CREATE TABLE guide_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guia TEXT NOT NULL,
+            autor TEXT NOT NULL,
+            body TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            edited_at TEXT
+        )
+    """)
+    connection.execute("CREATE INDEX idx_guide_notes_guia ON guide_notes (guia)")
+    connection.commit()
+
+
+def _ensure_guides_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "guides"):
+        return
+    connection.execute("""
+        CREATE TABLE guides (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            page_id TEXT NOT NULL UNIQUE,
+            guia TEXT NOT NULL,
+            cliente TEXT NOT NULL,
+            telefono TEXT,
+            estado_novedad TEXT,
+            carrier TEXT NOT NULL DEFAULT 'effi',
+            producto TEXT,
+            valor REAL,
+            cantidad INTEGER,
+            fecha_ultimo_seguimiento TEXT,
+            archived INTEGER NOT NULL DEFAULT 0,
+            last_synced_at TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    connection.execute("CREATE INDEX idx_guides_estado ON guides (estado_novedad)")
+    connection.execute("CREATE INDEX idx_guides_telefono ON guides (telefono)")
+    connection.execute("CREATE INDEX idx_guides_cliente ON guides (cliente)")
+    connection.execute("CREATE INDEX idx_guides_guia ON guides (guia)")
+    connection.commit()
+
+
+def _ensure_import_log_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "import_log"):
+        return
+    connection.execute("""
+        CREATE TABLE import_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            imported_at TEXT NOT NULL,
+            imported_by TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            guides_new INTEGER NOT NULL DEFAULT 0,
+            guides_skipped INTEGER NOT NULL DEFAULT 0,
+            guides_error INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    connection.commit()
+
+
 def _apply_migrations(connection: sqlite3.Connection) -> None:
     """Idempotent ALTERs for schemas created before new columns existed."""
     _migrate_legacy_rules_table(connection)
@@ -303,8 +404,18 @@ def _apply_migrations(connection: sqlite3.Connection) -> None:
             "ALTER TABLE run_results ADD COLUMN notas_operador TEXT"
         )
 
+    if not _column_exists(connection, "run_results", "telefono"):
+        connection.execute(
+            "ALTER TABLE run_results ADD COLUMN telefono TEXT"
+        )
+
     _ensure_bodega_customer_novelty_rule(connection)
     _ensure_bodega_reciente_rule(connection)
+    _ensure_users_table(connection)
+    _ensure_import_log_table(connection)
+    _ensure_guides_table(connection)
+    _ensure_guide_notes_table(connection)
+    _ensure_guide_edits_table(connection)
 
 
 def _migrate_legacy_rules_table(connection: sqlite3.Connection) -> None:

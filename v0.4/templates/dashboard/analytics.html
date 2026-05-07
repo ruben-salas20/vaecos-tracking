@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% from "macros.html" import carrier_badge %}
+{% block title %}Analytics{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Analytics</div>
+    <div class="page-sub">Insights operativos sobre las últimas {{ days }} corridas de seguimiento.</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('dashboard.analytics', days=7) }}" class="btn {% if days == 7 %}primary{% endif %}">7 días</a>
+    <a href="{{ url_for('dashboard.analytics', days=30) }}" class="btn {% if days == 30 %}primary{% endif %}">30 días</a>
+    <a href="{{ url_for('dashboard.analytics', days=90) }}" class="btn {% if days == 90 %}primary{% endif %}">90 días</a>
+  </div>
+</div>
+
+{% if not kpi or total_rows == 0 %}
+<div class="banner info">Sin datos en los últimos {{ days }} días. Ejecuta al menos una corrida para ver analytics.</div>
+{% else %}
+
+<div class="kpi-grid" style="margin-bottom:20px;">
+  <div class="kpi">
+    <div class="kpi-label">Corridas</div>
+    <div class="kpi-value">{{ kpi['total_runs'] | int }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Guías únicas</div>
+    <div class="kpi-value">{{ kpi['unique_guides'] | int }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Cambios detectados</div>
+    <div class="kpi-value">{{ kpi['changed'] | int }}</div>
+  </div>
+  <div class="kpi {% if por_recoger > 0 %}alert{% endif %}">
+    <div class="kpi-label">Por recoger en oficina</div>
+    <div class="kpi-value">{{ por_recoger }}</div>
+  </div>
+  <div class="kpi {% if parse_err_rate > 5 %}alert{% endif %}">
+    <div class="kpi-label">Parse error rate</div>
+    <div class="kpi-value">{{ "%.1f" | format(parse_err_rate) }}%</div>
+  </div>
+  <div class="kpi {% if err_rate > 2 %}alert{% endif %}">
+    <div class="kpi-label">Error rate</div>
+    <div class="kpi-value">{{ "%.1f" | format(err_rate) }}%</div>
+  </div>
+  <div class="kpi {% if kpi['manual_review'] | int > 0 %}alert{% endif %}">
+    <div class="kpi-label">Revisión manual</div>
+    <div class="kpi-value">{{ kpi['manual_review'] | int }}</div>
+  </div>
+</div>
+
+<div style="margin-bottom:16px;">
+  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Desglose — Por recoger en oficina</h2>
+  <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);">
+    <div class="kpi">
+      <div class="kpi-label">Entregadas</div>
+      <div class="kpi-value">{{ breakdown['delivered'] }}</div>
+    </div>
+    <div class="kpi {% if breakdown['returned'] > 0 %}alert{% endif %}">
+      <div class="kpi-label">Devueltas</div>
+      <div class="kpi-value">{{ breakdown['returned'] }}</div>
+    </div>
+    <div class="kpi {% if breakdown['total_por_recoger'] > 0 %}alert{% endif %}">
+      <div class="kpi-label">Pendientes</div>
+      <div class="kpi-value">{{ breakdown['total_por_recoger'] }}</div>
+    </div>
+  </div>
+  <div style="margin-top:10px;">
+    <a href="{{ url_for('dashboard.por_recoger') }}" class="btn">Ver detalle completo</a>
+  </div>
+</div>
+
+<div style="margin-bottom:16px;">
+  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Tendencia de atención</h2>
+  {{ trend_svg | safe }}
+</div>
+
+<div style="margin-bottom:16px;">
+  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Salud de las corridas</h2>
+  {{ bar_svg | safe }}
+</div>
+
+{% if carriers %}
+<div style="margin-bottom:16px;">
+  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Distribución por transportista</h2>
+  <div class="panel">
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Transportista</th><th class="num">Guías únicas</th><th class="num">Filas</th>
+            <th class="num">Sin cambios</th><th class="num">Cambios</th><th class="num">Manual</th>
+            <th class="num">Parse error</th><th class="num">Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in carriers %}
+          <tr>
+            <td>{{ carrier_badge(row['carrier']) }}</td>
+            <td class="num mono">{{ row['unique_guides'] | int }}</td>
+            <td class="num mono">{{ row['total_rows'] | int }}</td>
+            <td class="num mono">{{ row['unchanged'] | int }}</td>
+            <td class="num mono">{{ row['changed'] | int }}</td>
+            <td class="num mono">{{ row['manual_review'] | int }}</td>
+            <td class="num mono">{{ row['parse_error'] | int }}</td>
+            <td class="num mono">{{ row['error'] | int }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if clients %}
+<div style="margin-bottom:16px;">
+  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Clientes con más issues</h2>
+  <div class="panel">
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Cliente</th><th class="num">Guías únicas</th><th class="num">Total issues</th>
+            <th class="num">Cambios</th><th class="num">Manual</th><th class="num">Parse error</th><th class="num">Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in clients %}
+          <tr>
+            <td><a href="{{ url_for('dashboard.client_detail', cliente=row['cliente']) }}">{{ row['cliente'] | e }}</a></td>
+            <td class="num mono">{{ row['unique_guides'] | int }}</td>
+            <td class="num mono"><strong>{{ row['total_issues'] | int }}</strong></td>
+            <td class="num mono">{{ row['changed'] | int }}</td>
+            <td class="num mono">{{ row['manual_review'] | int }}</td>
+            <td class="num mono">{{ row['parse_error'] | int }}</td>
+            <td class="num mono">{{ row['error'] | int }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if status_rows %}
+<div style="margin-bottom:16px;">
+  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Tiempo promedio por estado Effi</h2>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Aproximación: promedio de corridas consecutivas que una guía permanece en cada estado dentro de la ventana.</p>
+  <div class="panel">
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Estado Effi</th><th class="num">Promedio de corridas</th><th class="num">Max</th><th class="num">Guías afectadas</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in status_rows %}
+          <tr>
+            <td>{{ row['status'] or '(sin estado)' | e }}</td>
+            <td class="num mono">{{ "%.2f" | format(row['avg_runs'] | float) }}</td>
+            <td class="num mono">{{ row['max_runs'] | int }}</td>
+            <td class="num mono">{{ row['guides_affected'] | int }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}

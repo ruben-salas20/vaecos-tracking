@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% from "macros.html" import result_pill, carrier_badge %}
+{% block title %}Buscar{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Buscar</div>
+    <div class="page-sub">Cliente, número de guía o DPI/teléfono.</div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-body">
+    <form method="get" action="{{ url_for('dashboard.search') }}" style="display:flex;gap:8px;">
+      <input
+        class="input"
+        type="text"
+        name="q"
+        value="{{ q | e }}"
+        placeholder="Ej: Maria Lopez   ·   B263470418-1   ·   53685499"
+        autofocus
+        style="flex:1;font-size:15px;"
+      >
+      <button type="submit" class="btn primary">Buscar</button>
+    </form>
+    <div class="field-help" style="margin-top:8px;">
+      <strong>Tip:</strong>
+      escribís un número que empieza con <code>B</code> → te lleva a la guía;
+      escribís solo dígitos → busca por DPI/teléfono;
+      escribís texto → busca por nombre de cliente.
+    </div>
+  </div>
+</div>
+
+{% if kind == 'phone' %}
+  <div class="page-head" style="border:none;padding-bottom:0;">
+    <div class="page-title-block">
+      <div class="page-title" style="font-size:18px;">Resultados por DPI / teléfono: <span class="mono">{{ telefono }}</span></div>
+      <div class="page-sub">{{ phone_results | length }} guía(s) encontradas.</div>
+    </div>
+  </div>
+
+  {% if phone_results %}
+  <div class="panel">
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Guía</th><th>Cliente</th><th>Carrier</th>
+            <th>Estado Notion</th><th>Estado Effi</th>
+            <th>Último resultado</th><th>Última corrida</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in phone_results %}
+          <tr>
+            <td class="mono"><a href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">{{ row['guia'] | e }}</a></td>
+            <td><a href="{{ url_for('dashboard.client_detail', cliente=row['cliente']) }}">{{ row['cliente'] | e }}</a></td>
+            <td>{{ carrier_badge(row['carrier']) }}</td>
+            <td>{{ row['estado_notion'] or '—' | e }}</td>
+            <td>{{ row['estado_effi'] or '—' | e }}</td>
+            <td>{{ result_pill(row['ultimo_resultado']) }}</td>
+            <td>{{ row['last_seen'] | fmt_ts }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="panel"><div class="panel-body">
+    <div class="empty">No hay guías registradas con ese DPI / teléfono.</div>
+  </div></div>
+  {% endif %}
+
+{% elif kind == 'name' %}
+  <div class="page-head" style="border:none;padding-bottom:0;">
+    <div class="page-title-block">
+      <div class="page-title" style="font-size:18px;">Clientes que coinciden con "{{ q | e }}"</div>
+      <div class="page-sub">{{ clients | length }} cliente(s) encontrados.</div>
+    </div>
+  </div>
+
+  {% if clients %}
+  <div class="panel">
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead>
+          <tr><th>Cliente</th><th>DPI / Teléfono</th><th>Guías</th><th>Última corrida</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for c in clients %}
+          <tr>
+            <td><a href="{{ url_for('dashboard.client_detail', cliente=c['cliente']) }}">{{ c['cliente'] | e }}</a></td>
+            <td class="mono">
+              {% if c['telefono'] %}
+              <a href="{{ url_for('dashboard.search', q=c['telefono']) }}">{{ c['telefono'] }}</a>
+              {% else %}
+              <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td class="mono">{{ c['guide_count'] }}</td>
+            <td>{{ c['last_seen'] | fmt_ts }}</td>
+            <td><a href="{{ url_for('dashboard.client_detail', cliente=c['cliente']) }}" class="btn btn-sm">Ver detalle</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="panel"><div class="panel-body">
+    <div class="empty">No hay clientes que coincidan con "{{ q | e }}".</div>
+  </div></div>
+  {% endif %}
+{% endif %}
+
+{% endblock %}

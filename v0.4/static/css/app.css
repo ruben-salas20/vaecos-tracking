@@ -1,0 +1,291 @@
+/* Login page layout */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 32px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: var(--shadow);
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+/* Notas cell inline edit */
+.notas-cell { position: relative; min-width: 160px; }
+.notas-text { display: block; }
+.notas-edit-btn {
+  margin-top: 4px; padding: 2px 8px;
+  font-size: .75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.notas-edit-btn:hover { background: var(--hover); }
+.notas-form { margin-top: 6px; display: none; }
+.notas-form.open { display: block; }
+.notas-form textarea {
+  width: 100%; min-height: 60px; resize: vertical; font-size: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+}
+.notas-form-actions { display: flex; gap: 6px; margin-top: 6px; }
+
+/* Import preview */
+.import-section { margin-bottom: 24px; }
+.import-section h3 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+
+/* Chart wrap (for SVG charts injected as HTML) */
+.chart-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 16px 18px;
+  margin-bottom: 12px;
+}
+.chart-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-bottom: 8px;
+}
+
+/* cell-trunc (truncated text cells) */
+.cell-trunc {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+/* Ensure page-head has consistent margin */
+.page-head { margin-bottom: 20px; }
+
+/* Filter bar form */
+.filter-form {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.filter-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.filter-form select, .filter-form input {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* Run progress spinner animation is in styles.css */
+.progress-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 40px;
+}
+
+/* Users page layout — table on left, "new user" form on right; collapses on narrow screens */
+.users-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .users-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Row actions — wrap when table column is narrow */
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.row-actions form { display: contents; }
+
+/* Allow tables to scroll horizontally inside their panel as a safety net */
+.panel-body.flush { overflow-x: auto; }
+
+/* ─────── Collapsible sidebar ─────── */
+.app.sidebar-collapsed { grid-template-columns: 56px minmax(0, 1fr); }
+.sidebar { transition: width 0.18s ease; }
+
+.sidebar-toggle {
+  background: transparent;
+  border: 1px solid var(--side-border);
+  color: var(--side-muted);
+  border-radius: var(--r-sm);
+  width: 26px; height: 26px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: color 0.12s, background 0.12s;
+}
+.sidebar-toggle:hover { color: #fff; background: var(--side-bg-2); }
+.sidebar-toggle svg { width: 14px; height: 14px; transition: transform 0.18s ease; }
+.app.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
+
+/* In collapsed state: hide labels, group titles, brand text, user info */
+.app.sidebar-collapsed .brand > div:not(.brand-mark),
+.app.sidebar-collapsed .nav-label,
+.app.sidebar-collapsed .nav-item span,
+.app.sidebar-collapsed .nav-badge,
+.app.sidebar-collapsed .user-info {
+  display: none;
+}
+.app.sidebar-collapsed .brand {
+  justify-content: center;
+  padding: 14px 8px;
+  position: relative;
+  cursor: pointer;
+}
+.app.sidebar-collapsed .brand-mark { pointer-events: none; }
+
+/* Toggle button becomes invisible overlay over the logo when collapsed
+   — user clicks the logo and is actually clicking the toggle */
+.app.sidebar-collapsed .sidebar-toggle {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: none;
+  background: transparent;
+  opacity: 0;
+  z-index: 2;
+}
+
+.app.sidebar-collapsed .nav-item {
+  justify-content: center;
+  padding: 9px 0;
+}
+.app.sidebar-collapsed .nav-item.active::before { left: 0; }
+.app.sidebar-collapsed .user-card {
+  justify-content: center;
+  padding: 12px 6px;
+}
+.app.sidebar-collapsed .user-card .btn { display: none; }
+
+/* Allow tooltips to escape the sidebar.
+   overflow-y:auto in styles.css implicitly clips overflow-x — override here. */
+.app.sidebar-collapsed .sidebar { overflow: visible; }
+
+/* Guide notes panel (β1) */
+.notes-panel { display: flex; flex-direction: column; gap: 12px; }
+.notes-header .notes-title { font-size: 14px; font-weight: 600; }
+.notes-header .notes-count { font-weight: 400; color: var(--muted); margin-left: 4px; }
+.notes-header .notes-sub { font-size: 12px; margin-top: 2px; }
+.notes-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.note-item {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 10px 12px;
+  position: relative;
+}
+.note-meta { font-size: 11px; display: flex; gap: 4px; align-items: center; margin-bottom: 4px; }
+.note-author { font-weight: 600; color: var(--ink); }
+.note-edited { font-style: italic; }
+.note-body { font-size: 13px; line-height: 1.45; white-space: pre-wrap; word-wrap: break-word; }
+.note-empty { font-size: 12px; padding: 12px; text-align: center; }
+.note-delete-btn {
+  position: absolute; top: 6px; right: 8px;
+  width: 22px; height: 22px;
+  background: transparent; border: none;
+  color: var(--muted); font-size: 18px; line-height: 1;
+  cursor: pointer; border-radius: var(--r-sm);
+  display: grid; place-items: center;
+}
+.note-delete-btn:hover { background: var(--danger-soft); color: var(--danger); }
+.note-form { display: flex; flex-direction: column; gap: 8px; }
+.note-form textarea {
+  width: 100%; min-height: 60px; resize: vertical;
+  padding: 8px 10px; font: inherit; font-size: 13px;
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--ink);
+}
+.note-form-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Theme toggle — show moon in light mode, sun in dark mode */
+.theme-toggle-btn .icon-sun { display: none; }
+.theme-toggle-btn .icon-moon { display: inline-block; }
+[data-theme="dark"] .theme-toggle-btn .icon-sun { display: inline-block; }
+[data-theme="dark"] .theme-toggle-btn .icon-moon { display: none; }
+.app.sidebar-collapsed .theme-toggle-btn { display: none; }
+
+/* Tooltip on collapsed nav items */
+.app.sidebar-collapsed .nav-item { position: relative; }
+.app.sidebar-collapsed .nav-item:hover::after {
+  content: attr(data-label);
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--ink, #1a1a1a);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  z-index: 100;
+  pointer-events: none;
+}
+.app.sidebar-collapsed .nav-item:hover::before {
+  /* Small arrow pointing left toward the icon */
+  content: '';
+  position: absolute;
+  left: calc(100% + 2px);
+  top: 50%;
+  transform: translateY(-50%);
+  border: 4px solid transparent;
+  border-right-color: var(--ink, #1a1a1a);
+  z-index: 100;
+  pointer-events: none;
+}
+/* The active state already uses ::before for the brand-color bar.
+   Reset that rule in collapsed+hover so our arrow shows. */
+.app.sidebar-collapsed .nav-item.active:hover::before {
+  border: 4px solid transparent;
+  border-right-color: var(--ink, #1a1a1a);
+  background: transparent;
+  width: auto;
+  border-radius: 0;
+  left: calc(100% + 2px);
+  top: 50%;
+  bottom: auto;
+}

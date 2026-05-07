@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Previsualización de importación{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Previsualización de importación</div>
+    <div class="page-sub">{{ result.filename }} · {{ result.raw_count }} filas procesadas</div>
+  </div>
+</div>
+
+<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;">
+  <div class="kpi">
+    <div class="kpi-label">Nuevas</div>
+    <div class="kpi-value">{{ result.new | length }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Ya existentes (omitidas)</div>
+    <div class="kpi-value">{{ result.skipped | length }}</div>
+  </div>
+  <div class="kpi {% if result.errors %}alert{% endif %}">
+    <div class="kpi-label">Con errores</div>
+    <div class="kpi-value">{{ result.errors | length }}</div>
+  </div>
+</div>
+
+{% if result.new %}
+<div class="import-section">
+  <h3 style="font-size:14px;font-weight:600;margin-bottom:8px;">Guías nuevas ({{ result.new | length }})</h3>
+  <div class="panel">
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead><tr><th>Fila</th><th>Guía</th><th>Cliente</th><th>Teléfono</th><th>Producto</th><th>Cant.</th><th>Valor</th><th>Estado inicial</th></tr></thead>
+        <tbody>
+          {% for g in result.new %}
+          <tr>
+            <td class="mono">{{ g.row_number }}</td>
+            <td class="mono">{{ g.guia | e }}</td>
+            <td>{{ g.cliente | e }}</td>
+            <td class="mono">{{ g.telefono | e }}</td>
+            <td>{{ g.producto | e_trunc }}</td>
+            <td class="mono">{{ g.cantidad }}</td>
+            <td class="mono">{{ g.valor | e }}</td>
+            <td>{{ g.estado_inicial | e }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if result.skipped %}
+<div class="import-section">
+  <h3 style="font-size:14px;font-weight:600;margin-bottom:8px;">Omitidas — ya existentes ({{ result.skipped | length }})</h3>
+  <div class="panel">
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead><tr><th>Fila</th><th>Guía</th><th>Cliente</th><th>Teléfono</th><th>Producto</th><th>Cant.</th><th>Valor</th><th>Estado inicial</th></tr></thead>
+        <tbody>
+          {% for g in result.skipped %}
+          <tr>
+            <td class="mono">{{ g.row_number }}</td>
+            <td class="mono">{{ g.guia | e }}</td>
+            <td>{{ g.cliente | e }}</td>
+            <td class="mono">{{ g.telefono | e }}</td>
+            <td>{{ g.producto | e_trunc }}</td>
+            <td class="mono">{{ g.cantidad }}</td>
+            <td class="mono">{{ g.valor | e }}</td>
+            <td>{{ g.estado_inicial | e }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if result.errors %}
+<div class="import-section">
+  <h3 style="font-size:14px;font-weight:600;margin-bottom:8px;color:var(--danger);">Errores ({{ result.errors | length }})</h3>
+  <div class="panel">
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead><tr><th>Fila</th><th>Guía</th><th>Error</th></tr></thead>
+        <tbody>
+          {% for g in result.errors %}
+          <tr>
+            <td class="mono">{{ g.row_number }}</td>
+            <td class="mono">{{ g.guia | e }}</td>
+            <td style="color:var(--danger);">{{ g.error | e }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if result.new %}
+<div class="row" style="gap:8px;margin-top:16px;">
+  <form method="post" action="{{ url_for('import_guides.import_confirm') }}">
+    <button type="submit" class="btn primary">Confirmar importación ({{ result.new | length }} nuevas)</button>
+  </form>
+  <a href="{{ url_for('import_guides.import_form') }}" class="btn">Cancelar</a>
+</div>
+{% else %}
+<div class="row" style="gap:8px;margin-top:16px;">
+  <a href="{{ url_for('import_guides.import_form') }}" class="btn">Volver a importar</a>
+  <a href="{{ url_for('dashboard.home') }}" class="btn">Ir al inicio</a>
+</div>
+{% endif %}
+{% endblock %}

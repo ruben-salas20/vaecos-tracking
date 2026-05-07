@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% from "macros.html" import carrier_badge %}
+{% block title %}Por recoger — Detalle{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Por recoger — Detalle</div>
+    <div class="page-sub">Guías que han pasado por el estado "Por recoger (INFORMADO)" y su situación actual.</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('dashboard.analytics') }}" class="btn">Volver a analytics</a>
+  </div>
+</div>
+
+<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px;">
+  <div class="kpi">
+    <div class="kpi-label">Entregadas</div>
+    <div class="kpi-value">{{ breakdown['delivered'] | length }}</div>
+  </div>
+  <div class="kpi {% if breakdown['returned'] %}alert{% endif %}">
+    <div class="kpi-label">Devueltas</div>
+    <div class="kpi-value">{{ breakdown['returned'] | length }}</div>
+  </div>
+  <div class="kpi {% if breakdown['total_por_recoger'] > 0 %}alert{% endif %}">
+    <div class="kpi-label">Pendientes (aún por recoger)</div>
+    <div class="kpi-value">{{ breakdown['total_por_recoger'] }}</div>
+  </div>
+</div>
+
+{# Entregadas #}
+<div style="margin-bottom:20px;">
+  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Entregadas ({{ breakdown['delivered'] | length }})</h2>
+  {% if breakdown['delivered'] %}
+  <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Guías que estaban "Por recoger (INFORMADO)" y fueron entregadas.</p>
+  <div class="panel">
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead><tr><th>Guía</th><th>Cliente</th><th>Transportista</th><th>Estado final</th><th>Corrida</th></tr></thead>
+        <tbody>
+          {% for row in breakdown['delivered'] %}
+          <tr>
+            <td><a href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">{{ row['guia'] }}</a></td>
+            <td>{{ row['cliente'] | e }}</td>
+            <td>{{ carrier_badge(row['carrier']) }}</td>
+            <td>{{ row['estado_propuesto'] or 'N/D' | e }}</td>
+            <td><a href="{{ url_for('dashboard.run_detail', run_id=row['run_id']) }}">#{{ row['run_id'] }}</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="panel"><div class="panel-body"><div class="empty">No hay guías entregadas en esta categoría.</div></div></div>
+  {% endif %}
+</div>
+
+{# Devueltas #}
+<div style="margin-bottom:20px;">
+  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Devueltas ({{ breakdown['returned'] | length }})</h2>
+  {% if breakdown['returned'] %}
+  <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Guías que estaban "Por recoger (INFORMADO)" y fueron devueltas.</p>
+  <div class="panel">
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead><tr><th>Guía</th><th>Cliente</th><th>Transportista</th><th>Estado final</th><th>Corrida</th></tr></thead>
+        <tbody>
+          {% for row in breakdown['returned'] %}
+          <tr>
+            <td><a href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">{{ row['guia'] }}</a></td>
+            <td>{{ row['cliente'] | e }}</td>
+            <td>{{ carrier_badge(row['carrier']) }}</td>
+            <td>{{ row['estado_propuesto'] or 'N/D' | e }}</td>
+            <td><a href="{{ url_for('dashboard.run_detail', run_id=row['run_id']) }}">#{{ row['run_id'] }}</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="panel"><div class="panel-body"><div class="empty">No hay guías devueltas en esta categoría.</div></div></div>
+  {% endif %}
+</div>
+
+{# Pendientes #}
+<div style="margin-bottom:20px;">
+  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Pendientes — Aún por recoger ({{ breakdown['total_por_recoger'] }})</h2>
+  {% if breakdown['pending'] %}
+  <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Guías que aún están en estado "Por recoger (INFORMADO)" en la corrida más reciente.</p>
+  <div class="panel">
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead><tr><th>Guía</th><th>Cliente</th><th>Transportista</th><th>Estado</th><th>Acción requerida</th><th>Corrida</th></tr></thead>
+        <tbody>
+          {% for row in breakdown['pending'] %}
+          <tr>
+            <td><a href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">{{ row['guia'] }}</a></td>
+            <td>{{ row['cliente'] | e }}</td>
+            <td>{{ carrier_badge(row['carrier']) }}</td>
+            <td>{{ row['estado_propuesto'] or 'N/D' | e }}</td>
+            <td>{{ row['requiere_accion'] or '—' | e }}</td>
+            <td><a href="{{ url_for('dashboard.run_detail', run_id=row['run_id']) }}">#{{ row['run_id'] }}</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="panel"><div class="panel-body"><div class="empty">No hay guías pendientes en "Por recoger (INFORMADO)".</div></div></div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Importar guías{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Importar guías</div>
+    <div class="page-sub">Carga un archivo Excel con guías para registrarlas en el sistema.</div>
+  </div>
+</div>
+
+<div class="panel" style="max-width:500px;">
+  <div class="panel-body">
+    <form method="post" action="{{ url_for('import_guides.import_preview') }}" enctype="multipart/form-data" class="fieldgroup">
+      <div>
+        <label class="field-label" for="excel_file">Archivo Excel (.xlsx o .xls)</label>
+        <input type="file" name="excel_file" id="excel_file" accept=".xlsx,.xls" class="input" required>
+        <div class="field-help">El archivo debe tener una columna de guía en las primeras 3 filas.</div>
+      </div>
+      <div class="row" style="gap:8px;margin-top:4px;">
+        <button type="submit" class="btn primary">Cargar y previsualizar</button>
+        <a href="{{ url_for('dashboard.home') }}" class="btn">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

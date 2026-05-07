@@ -53,6 +53,7 @@ def _write_csv(csv_path: Path, results: list[ProcessingResult]) -> None:
                 "cliente",
                 "guia",
                 "carrier",
+                "telefono",
                 "estado_notion_actual",
                 "estado_effi_actual",
                 "estado_propuesto",

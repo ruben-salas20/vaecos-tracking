@@ -296,7 +296,7 @@ class DashboardRepository:
                     """
                     SELECT
                         rr.run_id, r.started_at, r.mode, rr.carrier,
-                        rr.guia, rr.estado_notion_actual, rr.estado_effi_actual,
+                        rr.guia, rr.telefono, rr.estado_notion_actual, rr.estado_effi_actual,
                         rr.estado_propuesto, rr.resultado, rr.motivo,
                         rr.requiere_accion, rr.error
                     FROM run_results rr
@@ -308,6 +308,256 @@ class DashboardRepository:
                     (cliente, window),
                 ).fetchall()
             )
+
+    def latest_phone_for_client(self, cliente: str) -> str:
+        """Most recent non-empty telefono recorded for this client name."""
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT rr.telefono FROM run_results rr
+                JOIN runs r ON r.id = rr.run_id
+                WHERE rr.cliente = ? AND rr.telefono IS NOT NULL AND rr.telefono != ''
+                ORDER BY r.started_at DESC LIMIT 1
+                """,
+                (cliente,),
+            ).fetchone()
+            return row["telefono"] if row else ""
+
+    def latest_phone_for_guide(self, guia: str) -> str:
+        """Most recent non-empty telefono recorded for this guide."""
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT telefono FROM run_results
+                WHERE guia = ? AND telefono IS NOT NULL AND telefono != ''
+                ORDER BY run_id DESC LIMIT 1
+                """,
+                (guia,),
+            ).fetchone()
+            return row["telefono"] if row else ""
+
+    def search_clients_by_name(self, query: str, limit: int = 50) -> list[sqlite3.Row]:
+        """Distinct clients whose name contains query (case-insensitive).
+        Returns most recent telefono and guide count per client."""
+        like = f"%{query.strip()}%"
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT
+                        rr.cliente,
+                        COUNT(DISTINCT rr.guia) AS guide_count,
+                        (SELECT rr2.telefono FROM run_results rr2
+                         JOIN runs r2 ON r2.id = rr2.run_id
+                         WHERE rr2.cliente = rr.cliente
+                           AND rr2.telefono IS NOT NULL AND rr2.telefono != ''
+                         ORDER BY r2.started_at DESC LIMIT 1) AS telefono,
+                        MAX(r.started_at) AS last_seen
+                    FROM run_results rr
+                    JOIN runs r ON r.id = rr.run_id
+                    WHERE rr.cliente LIKE ? COLLATE NOCASE
+                    GROUP BY rr.cliente
+                    ORDER BY last_seen DESC
+                    LIMIT ?
+                    """,
+                    (like, limit),
+                ).fetchall()
+            )
+
+    # ─────────────────────── Guide edits (β2 — audit trail) ───────────────────────
+
+    def list_edits_for_guide(self, guia: str, limit: int = 50) -> list[sqlite3.Row]:
+        with self._connect() as connection:
+            return list(connection.execute(
+                "SELECT id, guia, autor, campo, valor_anterior, valor_nuevo, "
+                "created_at, sync_ok, error_msg FROM guide_edits "
+                "WHERE guia = ? ORDER BY created_at DESC LIMIT ?",
+                (guia, limit),
+            ).fetchall())
+
+    def latest_edit_for_guide(self, guia: str) -> sqlite3.Row | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT id, autor, campo, valor_anterior, valor_nuevo, created_at, sync_ok "
+                "FROM guide_edits WHERE guia = ? ORDER BY created_at DESC LIMIT 1",
+                (guia,),
+            ).fetchone()
+
+    # ─────────────────────── Guide notes (β1) ───────────────────────
+
+    def list_notes_for_guide(self, guia: str) -> list[sqlite3.Row]:
+        """All notes for a guide, newest first."""
+        with self._connect() as connection:
+            return list(connection.execute(
+                "SELECT id, guia, autor, body, created_at, edited_at "
+                "FROM guide_notes WHERE guia = ? ORDER BY created_at DESC",
+                (guia,),
+            ).fetchall())
+
+    def create_note(self, guia: str, autor: str, body: str) -> int:
+        from datetime import datetime
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO guide_notes (guia, autor, body, created_at) VALUES (?,?,?,?)",
+                (guia, autor, body, now),
+            )
+            connection.commit()
+            return cursor.lastrowid or 0
+
+    def get_note(self, note_id: int) -> sqlite3.Row | None:
+        with self._connect() as connection:
+            return connection.execute(
+                "SELECT id, guia, autor, body, created_at, edited_at FROM guide_notes WHERE id = ?",
+                (note_id,),
+            ).fetchone()
+
+    def update_note(self, note_id: int, body: str) -> bool:
+        from datetime import datetime
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE guide_notes SET body = ?, edited_at = ? WHERE id = ?",
+                (body, now, note_id),
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+
+    def delete_note(self, note_id: int) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute("DELETE FROM guide_notes WHERE id = ?", (note_id,))
+            connection.commit()
+            return cursor.rowcount > 0
+
+    def notes_count_by_guide(self, guides: list[str]) -> dict[str, int]:
+        """Return { guia: count } for the given list of guides. Empty input → {}."""
+        if not guides:
+            return {}
+        placeholders = ",".join("?" * len(guides))
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT guia, COUNT(*) AS c FROM guide_notes WHERE guia IN ({placeholders}) GROUP BY guia",
+                tuple(guides),
+            ).fetchall()
+            return {r["guia"]: r["c"] for r in rows}
+
+    def list_all_guides(
+        self,
+        estado: str = "",
+        carrier: str = "",
+        query: str = "",
+        include_archived: bool = False,
+        limit: int = 1000,
+    ) -> list[sqlite3.Row]:
+        """List rows from the guides snapshot with optional filters."""
+        wheres: list[str] = []
+        params: list = []
+        if not include_archived:
+            wheres.append("g.archived = 0")
+        if estado:
+            wheres.append("g.estado_novedad = ?")
+            params.append(estado)
+        if carrier:
+            wheres.append("g.carrier = ?")
+            params.append(carrier.lower())
+        if query:
+            like = f"%{query.strip()}%"
+            wheres.append("(g.cliente LIKE ? COLLATE NOCASE "
+                          "OR g.guia LIKE ? COLLATE NOCASE "
+                          "OR g.telefono LIKE ?)")
+            params.extend([like, like, like])
+        where_sql = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        params.append(limit)
+        with self._connect() as connection:
+            return list(connection.execute(
+                f"""
+                SELECT g.*,
+                  (SELECT rr.resultado FROM run_results rr
+                   JOIN runs r ON r.id = rr.run_id
+                   WHERE rr.guia = g.guia
+                   ORDER BY r.started_at DESC LIMIT 1) AS ultimo_resultado,
+                  (SELECT r.started_at FROM run_results rr
+                   JOIN runs r ON r.id = rr.run_id
+                   WHERE rr.guia = g.guia
+                   ORDER BY r.started_at DESC LIMIT 1) AS ultima_corrida
+                FROM guides g
+                {where_sql}
+                ORDER BY g.estado_novedad, g.cliente
+                LIMIT ?
+                """,
+                tuple(params),
+            ).fetchall())
+
+    def list_guide_states(self) -> list[sqlite3.Row]:
+        """All distinct estado_novedad values present in the snapshot, with counts."""
+        with self._connect() as connection:
+            return list(connection.execute(
+                """
+                SELECT estado_novedad, COUNT(*) AS n
+                FROM guides
+                WHERE archived = 0 AND estado_novedad IS NOT NULL AND estado_novedad != ''
+                GROUP BY estado_novedad
+                ORDER BY n DESC
+                """,
+            ).fetchall())
+
+    def guides_count(self) -> dict:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS total, "
+                "SUM(CASE WHEN archived = 1 THEN 1 ELSE 0 END) AS archived, "
+                "MAX(last_synced_at) AS last_sync "
+                "FROM guides"
+            ).fetchone()
+            return {
+                "total": row["total"] or 0,
+                "archived": row["archived"] or 0,
+                "last_sync": row["last_sync"] or "",
+            }
+
+    def search_by_phone(self, telefono: str) -> list[sqlite3.Row]:
+        """All distinct guides associated with this telefono.
+        Looks up the local guides snapshot first (covers guides never processed)
+        and falls back to run_results for guides not present in the snapshot."""
+        tel = telefono.strip()
+        with self._connect() as connection:
+            return list(connection.execute(
+                """
+                SELECT
+                    g.guia, g.cliente, g.telefono, g.carrier,
+                    g.estado_novedad AS estado_notion,
+                    NULL AS estado_effi,
+                    (SELECT rr2.resultado FROM run_results rr2
+                     JOIN runs r2 ON r2.id = rr2.run_id
+                     WHERE rr2.guia = g.guia
+                     ORDER BY r2.started_at DESC LIMIT 1) AS ultimo_resultado,
+                    COALESCE(
+                        (SELECT MAX(r2.started_at) FROM run_results rr2
+                         JOIN runs r2 ON r2.id = rr2.run_id
+                         WHERE rr2.guia = g.guia),
+                        g.last_synced_at
+                    ) AS last_seen
+                FROM guides g
+                WHERE g.telefono = ? AND g.archived = 0
+
+                UNION
+
+                SELECT
+                    rr.guia, rr.cliente, rr.telefono, rr.carrier,
+                    rr.estado_notion_actual AS estado_notion,
+                    rr.estado_effi_actual AS estado_effi,
+                    rr.resultado AS ultimo_resultado,
+                    r.started_at AS last_seen
+                FROM run_results rr
+                JOIN runs r ON r.id = rr.run_id
+                WHERE rr.telefono = ?
+                  AND rr.guia NOT IN (SELECT guia FROM guides)
+                GROUP BY rr.guia
+
+                ORDER BY last_seen DESC
+                """,
+                (tel, tel),
+            ).fetchall())
 
     def client_summary(self, cliente: str, days: int = 90) -> sqlite3.Row | None:
         """Aggregated counters for a single client."""

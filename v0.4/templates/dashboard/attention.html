@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "macros.html" import result_pill, carrier_badge %}
+{% block title %}Requiere atención{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Requiere atención</div>
+    {% if latest %}
+    <div class="page-sub">Corrida #{{ latest['id'] }} · {{ latest['started_at'] | fmt_ts }}{% if duration_text %} · {{ duration_text }}{% endif %} · {{ latest['total_processed'] }} guías procesadas</div>
+    {% else %}
+    <div class="page-sub">Sin corridas registradas.</div>
+    {% endif %}
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('dashboard.run_new') }}" class="btn">Nueva corrida</a>
+    <a href="{{ url_for('dashboard.runs') }}" class="btn">Ver corridas</a>
+  </div>
+</div>
+
+{% if not latest %}
+<div class="panel"><div class="panel-body"><div class="empty">No hay corridas registradas.</div></div></div>
+{% elif not by_result %}
+<div class="banner info">Sin guías que requieran atención en la última corrida. Todo en orden.</div>
+{% else %}
+  {% for resultado in ['changed', 'manual_review', 'parse_error', 'error'] %}
+    {% set group = by_result.get(resultado, []) %}
+    {% if group %}
+    <div style="margin-bottom:20px;">
+      <div class="row" style="margin-bottom:8px;">
+        <h2 style="font-size:14px;font-weight:600;color:var(--ink);">{{ section_labels[resultado] }} ({{ group | length }})</h2>
+      </div>
+      <div class="panel">
+        <div class="panel-body flush">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Guía</th>
+                <th>Cliente</th>
+                <th>Transportista</th>
+                <th>Resultado</th>
+                <th>Acción requerida</th>
+                <th>Estado Effi</th>
+                <th>Propuesto</th>
+                <th>Motivo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in group %}
+              <tr>
+                <td><a href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">{{ row['guia'] }}</a></td>
+                <td>{{ row['cliente'] | e }}</td>
+                <td>{{ carrier_badge(row['carrier']) }}</td>
+                <td>{{ result_pill(row['resultado']) }}</td>
+                <td>{{ row['requiere_accion'] or '' | e }}</td>
+                <td>{{ row['estado_effi_actual'] or 'N/D' | e }}</td>
+                <td>{{ row['estado_propuesto'] or 'N/D' | e }}</td>
+                <td>{{ row['motivo'] | e_trunc }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  {% endfor %}
+{% endif %}
+{% endblock %}

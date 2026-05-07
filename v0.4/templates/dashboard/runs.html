@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "macros.html" import mode_badge %}
+{% block title %}Corridas{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Corridas</div>
+    <div class="page-sub">Historial completo de ejecuciones almacenadas en SQLite.</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('dashboard.run_new') }}" class="btn primary">Nueva corrida</a>
+    <a href="{{ url_for('dashboard.home') }}" class="btn">Volver al resumen</a>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px;">
+  <form class="filter-form" method="get" action="{{ url_for('dashboard.runs') }}">
+    <label>
+      Modo
+      <select name="mode">
+        <option value="">Todos</option>
+        <option value="dry-run" {% if mode_filter == 'dry-run' %}selected{% endif %}>dry-run</option>
+        <option value="apply" {% if mode_filter == 'apply' %}selected{% endif %}>apply</option>
+      </select>
+    </label>
+    <div style="display:flex;gap:6px;align-items:flex-end;">
+      <button type="submit" class="btn primary">Filtrar</button>
+      <a href="{{ url_for('dashboard.runs') }}" class="btn">Limpiar</a>
+    </div>
+  </form>
+  <div class="panel-body flush">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Run ID</th><th>Inicio</th><th>Fin</th><th>Modo</th>
+          <th class="num">Procesadas</th><th class="num">Cambios</th>
+          <th class="num">Sin cambios</th><th class="num">Manual</th><th class="num">Errores</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td><a href="{{ url_for('dashboard.run_detail', run_id=row['id']) }}"><strong>#{{ row['id'] }}</strong></a></td>
+          <td>{{ row['started_at'] | fmt_ts }}</td>
+          <td>{% if row['finished_at'] %}{{ row['finished_at'] | fmt_ts }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>{{ mode_badge(row['mode']) }}</td>
+          <td class="num mono">{{ row['total_processed'] }}</td>
+          <td class="num mono">{{ row['total_changed'] }}</td>
+          <td class="num mono">{{ row['total_unchanged'] }}</td>
+          <td class="num mono">{{ row['total_manual_review'] }}</td>
+          <td class="num mono">{{ row['total_error'] }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px;">Sin corridas registradas.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

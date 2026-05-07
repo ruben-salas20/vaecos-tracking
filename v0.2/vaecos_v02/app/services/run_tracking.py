@@ -142,6 +142,7 @@ def execute_tracking(
                 actualizacion_notion="No actualizado",
                 error=error_msg,
                 carrier=record.carrier,
+                telefono=record.telefono,
             )
         else:
             tracking: EffiTrackingData = tracking_or_exc
@@ -160,6 +161,7 @@ def execute_tracking(
                     requiere_accion="Verificar con --save-raw-html y revisar el parser",
                     actualizacion_notion="No actualizado",
                     carrier=record.carrier,
+                    telefono=record.telefono,
                 )
             else:
                 decision = decide_status(
@@ -197,6 +199,7 @@ def execute_tracking(
                     requiere_accion=accion,
                     actualizacion_notion=actualizacion_notion,
                     carrier=record.carrier,
+                    telefono=record.telefono,
                 )
 
         repository.save_result(run_id, result)
