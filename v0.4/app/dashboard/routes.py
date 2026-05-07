@@ -273,7 +273,8 @@ def guide_detail(guia: str):
     conn.row_factory = lambda c, r: dict((c.description[i][0], r[i]) for i in range(len(r)))
     try:
         guide_row = conn.execute(
-            "SELECT guia, cliente, telefono, estado_novedad, last_synced_at "
+            "SELECT guia, cliente, telefono, estado_novedad, carrier, "
+            "       producto, valor, cantidad, archived, last_synced_at "
             "FROM guides WHERE guia = ? LIMIT 1", (guia,)
         ).fetchone()
     finally:
