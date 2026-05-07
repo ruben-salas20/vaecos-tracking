@@ -1,8 +1,8 @@
 # VAECOS Tracking Platform — Roadmap Estratégico
 
-Version: v1.1
+Version: v1.2
 Fecha: 2026-05-07
-Baseline: v0.4 (Flask, auth, snapshot local de Notion, edición desde la app)
+Baseline: v0.4 (Flask en producción, https://app.vaecos.com)
 
 > Este documento define el roadmap estratégico del producto.
 > El estado técnico detallado del proyecto vive en `docs/roadmap.md`.
@@ -10,9 +10,9 @@ Baseline: v0.4 (Flask, auth, snapshot local de Notion, edición desde la app)
 
 ---
 
-## Fase 1 — Flask + Auth + Excel + UX para operadora ✅ Completada en local
+## Fase 1 — Flask + Auth + Excel + UX para operadora + VPS ✅ Completada
 
-**Objetivo cumplido**: la herramienta dejó de ser un mini-server local single-user con HTML embebido y pasó a ser una aplicación Flask multi-usuario con login, gestión de guías, importación desde el ERP y notas/edición desde la app. Falta solo el despliegue al VPS para cerrarla formalmente.
+**Objetivo cumplido**: la herramienta dejó de ser un mini-server local single-user con HTML embebido y pasó a ser una aplicación Flask multi-usuario corriendo en producción con HTTPS automático en `https://app.vaecos.com`.
 
 ### Lo entregado
 
@@ -37,11 +37,27 @@ Baseline: v0.4 (Flask, auth, snapshot local de Notion, edición desde la app)
 - [x] Tabla responsive en `/users` y página `/users/<id>/reset-password`
 - [x] Notas de corrida con AJAX (la página ya no se desplaza al inicio al guardar)
 
-### Lo que queda para cerrar Fase 1
+### Lo entregado en producción (deploy completado 2026-05-07)
 
-- [ ] Validación con la operadora durante 3-5 días sin tocar Notion
-- [ ] Retiro formal de v0.3 (archivar código + actualizar `iniciar.bat` para apuntar a v0.4)
-- [ ] Despliegue en VPS Hostinger: systemd + Caddy + HTTPS
+- [x] **VPS Hostinger** (KVM 2: 2 vCPU / 8 GB / 100 GB) con Ubuntu 24.04 LTS
+- [x] **HTTPS automático** con Caddy + Let's Encrypt en `https://app.vaecos.com`
+- [x] **DNS** configurado vía Hostinger MCP (A record `app.vaecos.com → 2.24.206.197`)
+- [x] **systemd** con auto-restart (`vaecos.service`)
+- [x] **Firewall UFW**: solo puertos 22 / 80 / 443
+- [x] **SSH hardening**: solo key auth (clave en `~/.ssh/vaecos_vps`), password rejected
+- [x] **Usuario vaecos** con sudo NOPASSWD para administración
+- [x] **`.env` productivo** con `FLASK_SECRET_KEY` fresh, `V04_BOOTSTRAP_PASSWORD` random alphanumeric, chmod 600
+- [x] **ProxyFix** activo en producción para que Flask vea la IP real del cliente detrás de Caddy
+- [x] **Bootstrap admin** seeded automáticamente al primer arranque del servicio
+- [x] **Login validado** end-to-end por el dueño en producción
+
+### Lo que queda para cerrar Fase 1 formalmente
+
+- [ ] Migrar la BD de la operadora al VPS con `scripts/post_restore.py`
+- [ ] Validación con la operadora 3-5 días en producción sin tocar Notion
+- [ ] Crear los usuarios reales desde `/users` (operadora + fundadores)
+- [ ] Configurar backups automáticos del SQLite (cron + rotación)
+- [ ] Retiro formal de v0.3 (archivar código + eliminar `iniciar.bat` viejo)
 
 ### Lo que NO cambió en Fase 1
 
@@ -55,7 +71,8 @@ Baseline: v0.4 (Flask, auth, snapshot local de Notion, edición desde la app)
 - [x] Usuarios pueden hacer login con roles (`admin` / `user`) y operar.
 - [x] Se puede importar un Excel de guías → crea las páginas en Notion → dispara corridas.
 - [x] Todas las rutas están protegidas por sesión.
-- [ ] VPS contratado y plataforma desplegada con HTTPS.
+- [x] VPS contratado y plataforma desplegada con HTTPS automático.
+- [x] Login admin validado en producción.
 
 ---
 
@@ -157,7 +174,8 @@ Al menos una de estas condiciones:
 
 | Versión | Fecha | Descripción |
 |---------|-------|-------------|
-| v0.4 (en desarrollo) | 2026-05-06 → 2026-05-07 | Flask + auth + Excel + sync Notion + edición desde la app + notas con historial + búsqueda + modo oscuro + sidebar colapsable |
+| v0.4 (producción) | 2026-05-07 | Deploy a VPS Hostinger con Caddy + TLS automático en https://app.vaecos.com. Hardening SSH, UFW, systemd, ProxyFix |
+| v0.4 (dev) | 2026-05-06 → 2026-05-07 | Flask + auth + Excel + sync Notion + edición desde la app + notas con historial + búsqueda + modo oscuro + sidebar colapsable |
 | v0.3.4.2 | 2026-05-02 | Hotfix: migración idempotente regla "Almacenado en bodega" reciente |
 | v0.3.4 | 2026-05-01 | Refresh visual completo — RFC-001 + aesthetic refresh |
 | v0.3.3 | 2026-04 | Corridas en background, progress page, scripts bat para usuaria final |

@@ -2,6 +2,46 @@
 
 ## Estado actual del proyecto
 
+### Producción
+
+- **URL**: https://app.vaecos.com
+- **VPS**: Hostinger KVM 2 (2 vCPU, 8 GB RAM, 100 GB) — Ubuntu 24.04 LTS — IP `2.24.206.197`
+- **Código**: clonado de `github.com/ruben-salas20/vaecos-tracking` en `/opt/vaecos/`
+- **Service**: `vaecos.service` (systemd) — Waitress en `127.0.0.1:8765`, threads=4, restart=on-failure
+- **Reverse proxy**: Caddy con TLS automático (Let's Encrypt) — bloqueo de paths sensibles
+- **Firewall**: UFW activo, solo `22/80/443`
+- **SSH**: solo key auth (clave en `~/.ssh/vaecos_vps`), root con `prohibit-password`, usuario `vaecos` con sudo NOPASSWD
+- **DB**: `/opt/vaecos/data/vaecos_tracking.db` (WAL mode), bootstrap admin seeded
+- **Secrets**: `/opt/vaecos/.env` chmod 600, owned `vaecos:vaecos`
+- **DNS**: A record `app.vaecos.com → 2.24.206.197` configurado vía Hostinger MCP
+
+#### Comandos de gestión del VPS
+
+```bash
+# Acceso SSH
+ssh -i ~/.ssh/vaecos_vps vaecos@2.24.206.197
+
+# Logs en vivo
+journalctl -u vaecos -f
+
+# Restart de la app
+sudo systemctl restart vaecos
+
+# Deploy de cambios (después de git push desde la PC del dueño)
+ssh -i ~/.ssh/vaecos_vps vaecos@2.24.206.197 "cd /opt/vaecos && git pull && sudo systemctl restart vaecos"
+
+# Si requirements.txt cambió:
+ssh -i ~/.ssh/vaecos_vps vaecos@2.24.206.197 "cd /opt/vaecos && git pull && .venv/bin/pip install -r v0.4/requirements.txt && sudo systemctl restart vaecos"
+
+# Migrar la DB de la operadora (cuando la pase)
+scp -i ~/.ssh/vaecos_vps "ruta/operadora.db" vaecos@2.24.206.197:/opt/vaecos/data/operator.db
+ssh -i ~/.ssh/vaecos_vps vaecos@2.24.206.197 "sudo systemctl stop vaecos && \
+  mv /opt/vaecos/data/vaecos_tracking.db /opt/vaecos/data/vaecos_tracking.db.fresh-bootstrap && \
+  mv /opt/vaecos/data/operator.db /opt/vaecos/data/vaecos_tracking.db && \
+  cd /opt/vaecos && .venv/bin/python scripts/post_restore.py --skip-bootstrap && \
+  sudo systemctl start vaecos"
+```
+
 ### v0.1
 - Ya no existe como código operativo en el root.
 - Se conserva solo como respaldo en `backups/`.

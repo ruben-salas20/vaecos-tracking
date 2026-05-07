@@ -301,28 +301,52 @@ Notion sale completamente del flujo core. La DB interna es la única fuente de v
 
 ---
 
-## Despliegue en VPS (Fase 1)
+## Despliegue en VPS — estado actual (2026-05-07)
 
-### Diagrama
+La aplicación está corriendo en producción en `https://app.vaecos.com`.
+
+### Diagrama de runtime
 
 ```
-[Browser] ──HTTPS──► [Caddy (proxy + TLS)] ──HTTP──► [Flask/Waitress (systemd)] ──► [SQLite]
-                                                               │
-                                                     [run_tracking worker thread]
-                                                               │
-                                                     [Effi HTTP scraper]
+[Browser] ──HTTPS:443──► [Caddy] ──HTTP:8765──► [Waitress/Flask (systemd)] ──► [SQLite WAL]
+                          │  │                          │
+                  TLS auto │  └─ ProxyFix    [run_tracking worker thread + sync_guides]
+              Let's Encrypt│                            │
+                          │                  [Effi scraper] [Notion API]
+                          ▼
+                     UFW → solo 22/80/443
 ```
 
-### Pasos de despliegue (resumen)
+### Configuración real desplegada
 
-1. Instalar Python 3.12, pip y Caddy en el VPS.
-2. Clonar el repo (o subir el zip) a `/opt/vaecos/`.
-3. Instalar dependencias (`flask`, `bcrypt`, `openpyxl`, `waitress`).
-4. Configurar `.env` con las variables del entorno de producción.
-5. Crear el servicio systemd (`vaecos-tracking.service`).
-6. Configurar Caddy con el dominio y TLS automático.
-7. Iniciar y habilitar el servicio.
-8. Migrar la SQLite existente al VPS (primera vez).
+| Componente | Detalle |
+|---|---|
+| **VPS** | Hostinger KVM 2 (2 vCPU / 8 GB / 100 GB) — Ubuntu 24.04 LTS — IP `2.24.206.197` (id Hostinger 1593612) |
+| **Dominio** | `app.vaecos.com` — A record en Hostinger DNS, TTL 300s |
+| **Caddy** | v2.11.2 — `/etc/caddy/Caddyfile` con `reverse_proxy 127.0.0.1:8765`, gzip, bloqueo de `/.env` `/.git/*` `/wp-*` |
+| **Python** | 3.12.3 sistema + venv en `/opt/vaecos/.venv/` con `flask 3.1.3`, `bcrypt 4.3.0`, `openpyxl 3.1.5`, `waitress 3.0.2`, `flask-limiter 3.12` |
+| **Service** | `vaecos.service` (systemd) — corre `waitress-serve --listen=127.0.0.1:8765 --threads=4 wsgi:application` como user `vaecos`, restart on-failure, NoNewPrivileges, PrivateTmp |
+| **Firewall** | UFW activo — default deny incoming, allow `22/tcp`, `80/tcp`, `443/tcp` |
+| **SSH** | Key-only (`PasswordAuthentication no`, `PermitRootLogin prohibit-password`). Clave deploy: `~/.ssh/vaecos_vps` (en la PC del dueño), id Hostinger 501049 |
+| **Usuario app** | `vaecos` con sudo NOPASSWD vía `/etc/sudoers.d/vaecos`. La app corre como `vaecos`, no como root |
+| **Secrets** | `/opt/vaecos/.env` chmod 600, owned `vaecos:vaecos`. `FLASK_SECRET_KEY` regenerado por `secrets.token_hex(32)`, `V04_BOOTSTRAP_PASSWORD` random alphanumeric 20 chars |
+| **DB** | `/opt/vaecos/data/vaecos_tracking.db` (WAL mode), bootstrap admin seeded al primer arranque |
+| **ProxyFix** | Activo solo en `production` con `x_for=1, x_proto=1, x_host=1, x_prefix=1` para que Flask vea la IP real del cliente detrás de Caddy (necesario para rate limiting correcto) |
+
+### Pasos del despliegue ejecutado
+
+1. ✅ `apt update && apt upgrade` (sistema en estado limpio post-reinstall)
+2. ✅ Instalar Caddy desde repo oficial (`dl.cloudsmith.io/public/caddy/stable`) + `python3-venv` + `python3-pip`
+3. ✅ Crear usuario `vaecos`, copiar SSH key a `~/.ssh/authorized_keys`, agregar a sudoers NOPASSWD
+4. ✅ UFW: deny incoming default, permitir SSH/HTTP/HTTPS
+5. ✅ DNS: A record `app.vaecos.com → 2.24.206.197` con `overwrite=false` (sin tocar Shopify/Zoho)
+6. ✅ Clonar repo en `/opt/vaecos/` como user `vaecos`
+7. ✅ Crear venv e instalar `requirements.txt`
+8. ✅ Generar `.env` productivo y subir vía SCP con permisos 600
+9. ✅ Crear `vaecos.service`, `daemon-reload`, `enable`, `start`
+10. ✅ Crear `Caddyfile`, `caddy validate`, `systemctl reload caddy` — TLS automático emitido
+11. ✅ Hardening SSH: `PasswordAuthentication no` en `99-vaecos-hardening.conf` + fix de `50-cloud-init.conf` (first-match-wins en orden alfabético)
+12. ✅ Smoke test desde fuera: `curl -sI https://app.vaecos.com/login` → 200 OK + login web validado por dueño
 
 ### Variables de entorno adicionales para producción
 

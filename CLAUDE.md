@@ -171,3 +171,71 @@ V02_UPDATE_GITHUB_TOKEN=                  # required for private release repo
 - After any code change you must FULLY restart `iniciar_v04.bat` (Flask reloads templates but NOT Python modules; `use_reloader=False` is set to avoid the BuildError trap).
 - Auto-sync runs after each tracking run finishes; manual sync is available at `/sync/notion` from `/all-guides`.
 - All state changes from the operator are atomic: if Notion rejects, nothing is written locally and the failed attempt is logged in `guide_edits` with `sync_ok = 0`.
+
+## Production deploy (live)
+
+URL: `https://app.vaecos.com` (deploy 2026-05-07).
+
+| | |
+|---|---|
+| VPS | Hostinger KVM 2 — IP `2.24.206.197` — Ubuntu 24.04 LTS |
+| App user | `vaecos` (sudo NOPASSWD), code at `/opt/vaecos/`, venv at `/opt/vaecos/.venv/` |
+| Service | systemd `vaecos.service` running `waitress-serve --listen=127.0.0.1:8765 --threads=4 wsgi:application` |
+| Reverse proxy | Caddy with auto TLS (Let's Encrypt) at `/etc/caddy/Caddyfile` |
+| Firewall | UFW: only `22/80/443` |
+| SSH | Key-only — local key at `~/.ssh/vaecos_vps` (PC dueño) |
+| DB | `/opt/vaecos/data/vaecos_tracking.db` (WAL) |
+| Secrets | `/opt/vaecos/.env` (chmod 600) — `FLASK_SECRET_KEY`, `NOTION_API_KEY`, etc. |
+| ProxyFix | Active only when `VAECOS_ENV=production` for correct rate-limiting IPs |
+
+### Deploy a code change
+
+```powershell
+# From the dueño's PC (Windows):
+git add . ; git commit -m "..." ; git push
+ssh -i $env:USERPROFILE\.ssh\vaecos_vps vaecos@2.24.206.197 "cd /opt/vaecos && git pull && sudo systemctl restart vaecos"
+# If requirements.txt changed, add: && .venv/bin/pip install -r v0.4/requirements.txt
+```
+
+### Operate the VPS
+
+```powershell
+# SSH in as vaecos (preferred) or root
+ssh -i $env:USERPROFILE\.ssh\vaecos_vps vaecos@2.24.206.197
+
+# Inside the VPS:
+sudo systemctl status vaecos          # service status
+sudo journalctl -u vaecos -f           # live app logs
+sudo journalctl -u caddy -n 50         # caddy logs
+sudo systemctl restart vaecos          # restart app
+```
+
+### Migrate the operator's DB (one-shot)
+
+When the operator hands over her local `vaecos_tracking.db`:
+```powershell
+scp -i $env:USERPROFILE\.ssh\vaecos_vps "ruta\operadora.db" vaecos@2.24.206.197:/opt/vaecos/data/operator.db
+ssh -i $env:USERPROFILE\.ssh\vaecos_vps vaecos@2.24.206.197 "sudo systemctl stop vaecos && \
+  mv /opt/vaecos/data/vaecos_tracking.db /opt/vaecos/data/vaecos_tracking.db.fresh-bootstrap && \
+  mv /opt/vaecos/data/operator.db /opt/vaecos/data/vaecos_tracking.db && \
+  cd /opt/vaecos && .venv/bin/python scripts/post_restore.py --skip-bootstrap && \
+  sudo systemctl start vaecos"
+```
+
+`scripts/post_restore.py` is idempotent and supports `--dry-run`. It applies migrations + Notion sync + telefono backfill on top of the operator's existing data.
+
+### Hostinger MCP (DNS + VPS management)
+
+The Hostinger MCP is available at `mcp__hostinger__*` tools. Useful operations:
+
+- `VPS_getVirtualMachineDetailsV1` — VPS info
+- `VPS_getMetricsV1` — CPU/memory metrics
+- `VPS_createSnapshotV1` — manual snapshot before risky changes
+- `DNS_getDNSRecordsV1` / `DNS_updateDNSRecordsV1` — manage DNS records (always use `overwrite=false` to avoid wiping existing records)
+
+### SSH gotcha — first-match-wins
+
+If you change `/etc/ssh/sshd_config.d/99-*.conf` and the change doesn't take effect: SSHD uses **first-match-wins** in alphabetical order. Ubuntu cloud-init drops a `50-cloud-init.conf` that may conflict. Always verify the effective config with:
+```
+sudo sshd -T | grep -iE 'passwordauth|permitroot|pubkey'
+```
