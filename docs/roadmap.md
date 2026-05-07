@@ -58,10 +58,7 @@ ssh -i ~/.ssh/vaecos_vps vaecos@2.24.206.197 "sudo systemctl stop vaecos && \
 - Tiene arquitectura modular con abstracción de carriers (`providers/carrier.py` + `providers/carriers/`).
 - Tiene SQLite para histórico + reglas editables + auditoría (`rule_history`).
 - Tiene CLI y TUI.
-- Tiene exportación a:
-  - `summary.md`
-  - `results.csv`
-  - `summary.pdf`
+- **Reportes auto-generados (`.csv` / `.md` / `.pdf`) eliminados** — toda la información ahora vive en SQLite + la app.
 - Tiene consultas históricas:
   - `runs`
   - `run-details`
@@ -81,10 +78,11 @@ ssh -i ~/.ssh/vaecos_vps vaecos@2.24.206.197 "sudo systemctl stop vaecos && \
 - Sigue arrancable con `python v0.3/server.py` para fallback durante la transición, pero NO es la interfaz que la operadora usa.
 - Pendiente: archivar formalmente cuando la operadora valide v0.4 en uso real.
 
-### v0.4 (interfaz principal en uso)
+### v0.4 (interfaz principal en producción)
 - Aplicación Flask 3.1 con blueprints, login, sesiones firmadas, modo oscuro, sidebar colapsable.
 - Reusa el motor de v0.2 directamente (sin reescribir nada del business engine) y el `DashboardRepository` de v0.3.
 - Arrancable con `python v0.4/server.py` o `iniciar_v04.bat`.
+- **Fase 2 entregada (2.1, 2.2, 2.3 + archive/unarchive)**: el motor lee guías desde tabla local; la operadora puede crear, editar campos y archivar/restaurar guías desde la app sin tocar Notion ni Excel. Pendiente: 2.4 (inversión polaridad de escrituras) y 2.5 (validador de consistencia).
 - Estructura:
   ```
   v0.4/

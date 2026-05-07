@@ -1,7 +1,7 @@
 # VAECOS Tracking — Arquitectura
 
-Version: v1.1
-Fecha: 2026-05-07
+Version: v1.2
+Fecha: 2026-05-07 (post Fase 2.1/2.2/2.3)
 
 ---
 
@@ -16,9 +16,9 @@ Fecha: 2026-05-07
 | Web framework | Flask con blueprints (auth, dashboard, runs, import_guides, users) |
 | Auth | bcrypt + Flask sessions firmadas |
 | Base de datos | SQLite local (`v0.2/data/vaecos_tracking.db`) con WAL habilitado |
-| Fuente operativa de guías | Tabla local `guides` (sincronizada desde Notion) |
+| Fuente operativa de guías | Tabla local `guides` (Fase 2.1 — el motor lee de aquí, no de Notion) |
 | Fuente de tracking | Effi (scraping HTML) |
-| Notion | Mirror de salida + sync inicial; ya no es fuente única de verdad |
+| Notion | Sigue siendo autoritativo para escrituras (Notion FIRST atomic). Lectura del motor ya migrada a local. Fase 2.4 (pendiente) invertirá la polaridad de escrituras. |
 | Despliegue actual | Local, multi-usuario por login, Windows |
 | Despliegue objetivo | VPS Hostinger con Caddy + systemd + Waitress (Fase 1 cierre) |
 
@@ -42,9 +42,11 @@ v0.2/                               # Motor de negocio (sin cambios estructurale
       rules_repository.py           # CRUD de reglas + auditoría + seeding
     app/
       services/
-        run_tracking.py             # Flujo principal de una corrida (lee de Notion en vivo todavía)
+        run_tracking.py             # Flujo principal: pre-sync + lee de tabla local guides (Fase 2.1)
+        local_guides.py             # Fase 2.1 — fetch_active/selected_guides_local (reemplaza lectura Notion del motor)
         sync_guides.py              # Pull-only sync Notion → tabla guides con upsert por page_id
-        update_guide.py             # Atomic update: Notion → guides → guide_edits (audit trail)
+        update_guide.py             # Atomic edits: state, fields (Fase 2.2), archive/unarchive (Fase 2.3)
+        add_guide.py                # Fase 2.3 — create new guide atomic (Notion → local + audit)
         update_service.py           # Check/download/apply de releases
       config.py                     # V02Settings + .env loader
       cli.py                        # CLI y TUI

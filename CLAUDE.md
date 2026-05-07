@@ -55,10 +55,11 @@ python -m compileall "v0.2" "v0.3" "v0.4"
 
 ### Data flow
 
-1. `NotionProvider` (`v0.2/vaecos_v02/providers/notion_provider.py`) fetches active guides from Notion.
-2. A `Carrier` (Protocol in `v0.2/vaecos_v02/providers/carrier.py`) fetches tracking data per guide. Effi is fully implemented; Guatex is a stub. The carrier is selected per guide from the Notion `Transportista` field.
-3. `decide_status()` in `v0.2/vaecos_v02/core/rules.py` evaluates rules in stratified semantic order: **terminal → operational → contextual → stagnation → preservation**. First match wins within each phase.
-4. `UpdateService` (`v0.2/vaecos_v02/app/services/update_service.py`) applies the decision and writes results to both Notion and SQLite.
+1. **Pre-sync** (Phase 2.1): `sync_guides()` pulls all pages from Notion into the local `guides` table at the start of every tracking run. If Notion fails, the engine falls back to the existing local snapshot (warn logged).
+2. **Read source** (Phase 2.1): the engine reads guides to process from the **local `guides` table** via `local_guides.fetch_active_guides_local()` / `fetch_selected_guides_local()` — NOT directly from Notion. Same shape as the old `NotionProvider.fetch_*` methods.
+3. A `Carrier` (Protocol in `v0.2/vaecos_v02/providers/carrier.py`) fetches tracking data per guide. Effi is fully implemented; Guatex is a stub. The carrier is selected per guide from the local row's `carrier` column.
+4. `decide_status()` in `v0.2/vaecos_v02/core/rules.py` evaluates rules in stratified semantic order: **terminal → operational → contextual → stagnation → preservation**. First match wins within each phase.
+5. **Writes** (still atomic Notion-first): when `--apply` decides to change state, `notion.update_page_status()` is called; on success, the post-run sync brings the change back to local. App-initiated edits (state, fields, archive, create) follow the same pattern in `update_guide.py` / `add_guide.py`. Phase 2.4 (pendiente) invertirá esta polaridad.
 
 ### Rule engine
 
@@ -79,8 +80,8 @@ Migrations are idempotent functions in `v0.2/vaecos_v02/storage/db.py` called on
 ### v0.4 web server (current)
 
 Flask app factory in `v0.4/app/__init__.py`. Five blueprints:
-- `auth` — `/login`, `/logout`, `/change-password`
-- `dashboard` — 14 GETs migrated from v0.3 + `/all-guides`, `/search`, `/guides/<g>/notes`, `/guides/<g>/state`
+- `auth` — `/login`, `/logout`, `/change-password`, `/mi-cuenta` (perfil + cambio de password en una sola página)
+- `dashboard` — 14 GETs migrated from v0.3 + `/all-guides`, `/search`, `/guides/new` (crear), `/guides/<g>/notes`, `/guides/<g>/state`, `/guides/<g>/fields` (Phase 2.2), `/guides/<g>/archive` y `/guides/<g>/unarchive` (Phase 2.3)
 - `runs` — `/run/new`, `/run/progress/<token>`, `/runs/<id>/export/effi`, `/sync/notion`, `/sync/progress/<token>`
 - `import_guides` — `/import` (upload + preview + confirm; confirm creates Notion pages)
 - `users` — `/users`, `/users/<id>/{toggle,delete,reset-password}` (admin-only)
@@ -89,12 +90,14 @@ v0.4 imports v0.2 (engine) and v0.3 (`DashboardRepository`, charts) directly via
 
 ### Notion writes
 
-Three entry points to Notion API:
-- `update_page_status(page_id, estado, fecha)` — used by the engine when a tracking run applies a change.
-- `update_estado_novedad(page_id, estado)` — used when the operator edits state from the app (case-insensitive option resolution via `_resolve_select_option`).
-- `create_guide_page(guia, cliente, ...)` — used by Excel import to create new pages with all available fields.
+Entry points to Notion API:
+- `update_page_status(page_id, estado, fecha)` — engine when `--apply` changes a state.
+- `update_estado_novedad(page_id, estado)` — app cuando la operadora edita el estado.
+- `update_guide_fields(page_id, *, telefono=_UNSET, producto=_UNSET, valor=_UNSET, cantidad=_UNSET)` — Phase 2.2 PATCH atómico de campos editables. Sentinel `_UNSET` distingue "no enviado" de "enviado vacío" (clear).
+- `create_guide_page(guia, cliente, ...)` — Excel import + Phase 2.3 (formulario `/guides/new`).
+- `archive_page(page_id)` / `unarchive_page(page_id)` — Phase 2.3 soft-delete y restore (papelera 30 días).
 
-Atomic state edits go through `v0.2/vaecos_v02/app/services/update_guide.py`: writes to Notion FIRST, then to the local `guides` table, and audits the attempt in `guide_edits` (with `sync_ok = 0` and `error_msg` if Notion rejected).
+**Patrón atómico** (vigente en Fase 2 actual): todos los servicios en `update_guide.py` y `add_guide.py` escriben **Notion FIRST** y, si Notion responde OK, actualizan local + audit (`guide_edits`). Si Notion falla, no se modifica nada local pero queda registrado el intento con `sync_ok=0` y `error_msg`. **Phase 2.4** (pendiente) invertirá esta polaridad: local FIRST, Notion mirror best-effort.
 
 ### Environment
 
@@ -150,9 +153,11 @@ V02_UPDATE_GITHUB_TOKEN=                  # required for private release repo
 | `v0.2/vaecos_v02/storage/db.py` | SQLite schema, `init_db()`, idempotent migrations |
 | `v0.2/vaecos_v02/storage/rules_repository.py` | CRUD + audit trail for the `rules` table |
 | `v0.2/vaecos_v02/providers/effi_provider.py` | Effi HTML scraper |
-| `v0.2/vaecos_v02/providers/notion_provider.py` | Notion API client (read + write + page create) |
+| `v0.2/vaecos_v02/providers/notion_provider.py` | Notion API client (read + write + create + archive/unarchive) |
 | `v0.2/vaecos_v02/app/services/sync_guides.py` | Pull-only sync Notion → tabla `guides` (upsert by page_id) |
-| `v0.2/vaecos_v02/app/services/update_guide.py` | Atomic state edit: Notion → local → audit |
+| `v0.2/vaecos_v02/app/services/local_guides.py` | **Phase 2.1** — read guides from local table (engine consumes this, not Notion) |
+| `v0.2/vaecos_v02/app/services/update_guide.py` | Atomic state/fields edit + archive + unarchive (Notion → local → audit) |
+| `v0.2/vaecos_v02/app/services/add_guide.py` | **Phase 2.3** — atomic create new guide (Notion → local + audit) |
 | `v0.3/vaecos_v03/storage.py` | `DashboardRepository` — reused by v0.4 for queries (search, guides, notes, edits) |
 | `v0.3/vaecos_v03/render.py` | SVG charts reused by v0.4 |
 | `v0.4/app/__init__.py` | Flask `create_app()` factory, blueprint registration, bootstrap admin |
