@@ -53,10 +53,12 @@ Baseline: v0.4 (Flask en producción, https://app.vaecos.com)
 
 ### Lo que queda para cerrar Fase 1 formalmente
 
-- [ ] Migrar la BD de la operadora al VPS con `scripts/post_restore.py`
+- [x] Migrar la BD de la operadora al VPS con `scripts/post_restore.py` (2026-05-07)
+- [x] Configurar backups automáticos del SQLite (cron + rotación 14 días, 2026-05-07)
+- [x] Eliminar generación de reportes automáticos `.csv/.md/.pdf` (toda la info ya está en la app, 2026-05-07)
+- [x] Edición de perfil propio + popover en sidebar (`/mi-cuenta`, 2026-05-07)
 - [ ] Validación con la operadora 3-5 días en producción sin tocar Notion
 - [ ] Crear los usuarios reales desde `/users` (operadora + fundadores)
-- [ ] Configurar backups automáticos del SQLite (cron + rotación)
 - [ ] Retiro formal de v0.3 (archivar código + eliminar `iniciar.bat` viejo)
 
 ### Lo que NO cambió en Fase 1

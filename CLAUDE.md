@@ -165,9 +165,9 @@ V02_UPDATE_GITHUB_TOKEN=                  # required for private release repo
 ## Operational notes
 
 - `--apply` updates Notion properties only; the page history body is updated manually.
-- Use `--save-raw-html` to save Effi HTML for debugging when the parser breaks.
-- v0.4 supports multiple users; first admin is seeded from `V04_BOOTSTRAP_EMAIL`/`V04_BOOTSTRAP_PASSWORD`.
-- `apply-update` preserves `.env`, `v0.2/data/`, and `v0.2/reports/` — safe to run.
+- Use `--save-raw-html` to save Effi HTML for debugging when the parser breaks (only case in which `v0.2/reports/<ts>/` is created — toda la información operativa vive en SQLite y la app, ya no se generan `.csv/.md/.pdf` automáticos).
+- v0.4 supports multiple users; first admin is seeded from `V04_BOOTSTRAP_EMAIL`/`V04_BOOTSTRAP_PASSWORD`. Cualquier usuario logueado puede editar su nombre/email y cambiar su contraseña desde `/mi-cuenta`.
+- `apply-update` preserves `.env` and `v0.2/data/` — safe to run.
 - After any code change you must FULLY restart `iniciar_v04.bat` (Flask reloads templates but NOT Python modules; `use_reloader=False` is set to avoid the BuildError trap).
 - Auto-sync runs after each tracking run finishes; manual sync is available at `/sync/notion` from `/all-guides`.
 - All state changes from the operator are atomic: if Notion rejects, nothing is written locally and the failed attempt is logged in `guide_edits` with `sync_ok = 0`.
@@ -187,6 +187,7 @@ URL: `https://app.vaecos.com` (deploy 2026-05-07).
 | DB | `/opt/vaecos/data/vaecos_tracking.db` (WAL) |
 | Secrets | `/opt/vaecos/.env` (chmod 600) — `FLASK_SECRET_KEY`, `NOTION_API_KEY`, etc. |
 | ProxyFix | Active only when `VAECOS_ENV=production` for correct rate-limiting IPs |
+| Backups | `/opt/vaecos/backups/vaecos_<ts>.db.gz` — daily 3am UTC via cron, 14-day retention. Log: `/opt/vaecos/backups/backup.log` |
 
 ### Deploy a code change
 
@@ -223,6 +224,26 @@ ssh -i $env:USERPROFILE\.ssh\vaecos_vps vaecos@2.24.206.197 "sudo systemctl stop
 ```
 
 `scripts/post_restore.py` is idempotent and supports `--dry-run`. It applies migrations + Notion sync + telefono backfill on top of the operator's existing data.
+
+### Backups del SQLite
+
+Cron de `vaecos@VPS` corre `/opt/vaecos/scripts/backup_db.sh` a las 3am UTC todos los días:
+- Usa `sqlite3 .backup` (online API, WAL-safe — no bloquea writers)
+- Comprime con `gzip -9` y rota manteniendo los últimos 14 días
+- Output: `/opt/vaecos/backups/vaecos_YYYYMMDD_HHMMSS.db.gz` (~160 KB)
+- Log persistente: `/opt/vaecos/backups/backup.log`
+
+Recuperar un backup:
+```bash
+gunzip -k vaecos_<ts>.db.gz                    # -k mantiene el .gz original
+sqlite3 vaecos_<ts>.db 'SELECT COUNT(*) FROM runs;'   # verificar
+sudo systemctl stop vaecos
+mv /opt/vaecos/data/vaecos_tracking.db /opt/vaecos/data/vaecos_tracking.db.before-restore
+mv vaecos_<ts>.db /opt/vaecos/data/vaecos_tracking.db
+sudo systemctl start vaecos
+```
+
+Backup manual on-demand: `/opt/vaecos/scripts/backup_db.sh`
 
 ### Hostinger MCP (DNS + VPS management)
 
