@@ -126,9 +126,18 @@ class NotionProvider:
     def archive_page(self, page_id: str) -> None:
         """Archiva una página en Notion (la envía a la papelera, recuperable por 30 días).
         Patrón Notion API: PATCH con {'archived': true}."""
+        self._set_archived(page_id, True, action="archive")
+
+    def unarchive_page(self, page_id: str) -> None:
+        """Restaura una página desde la papelera de Notion.
+        Patrón Notion API: PATCH con {'archived': false}.
+        Falla si la página fue purgada de la papelera (>30 días)."""
+        self._set_archived(page_id, False, action="unarchive")
+
+    def _set_archived(self, page_id: str, archived: bool, *, action: str) -> None:
         endpoint = f"https://api.notion.com/v1/pages/{page_id}"
         try:
-            self._request_json(endpoint, "PATCH", {"archived": True})
+            self._request_json(endpoint, "PATCH", {"archived": archived})
         except error.HTTPError as exc:
             try:
                 body = exc.read().decode("utf-8") if hasattr(exc, "read") else ""
@@ -143,7 +152,7 @@ class NotionProvider:
                         detail = f"{detail} — {msg}"
                 except Exception:
                     pass
-            raise RuntimeError(f"Notion archive failed: {detail}")
+            raise RuntimeError(f"Notion {action} failed: {detail}")
 
     def update_guide_fields(
         self,

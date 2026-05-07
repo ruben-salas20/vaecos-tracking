@@ -34,6 +34,56 @@ class ArchiveResult:
     edit_id: int
 
 
+def unarchive_guide(
+    db_path: Path,
+    notion: NotionProvider,
+    guia: str,
+    autor: str,
+) -> ArchiveResult:
+    """Restaura una guía archivada: PATCH archived=false en Notion + archived=0 local.
+    Atomic: Notion FIRST. Falla si la página fue purgada de la papelera (>30 días)."""
+    conn = connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT page_id, cliente, archived FROM guides WHERE guia = ?",
+            (guia,),
+        ).fetchone()
+        if not row:
+            raise LookupError(f"La guía {guia} no existe en el snapshot local.")
+        if not row["archived"]:
+            raise ValueError(f"La guía {guia} no está archivada.")
+
+        page_id = row["page_id"]
+        cliente = row["cliente"] or ""
+        now = datetime.now().isoformat(timespec="seconds")
+
+        try:
+            notion.unarchive_page(page_id)
+        except Exception as exc:  # noqa: BLE001
+            conn.execute(
+                "INSERT INTO guide_edits (guia, autor, campo, valor_anterior, valor_nuevo, "
+                "created_at, sync_ok, error_msg) VALUES (?,?,?,?,?,?,0,?)",
+                (guia, autor, "__unarchive__", "", cliente, now, str(exc)),
+            )
+            conn.commit()
+            raise
+
+        conn.execute(
+            "UPDATE guides SET archived = 0, last_synced_at = ? WHERE guia = ?",
+            (now, guia),
+        )
+        cursor = conn.execute(
+            "INSERT INTO guide_edits (guia, autor, campo, valor_anterior, valor_nuevo, "
+            "created_at, sync_ok) VALUES (?,?,?,?,?,?,1)",
+            (guia, autor, "__unarchive__", "", cliente, now),
+        )
+        edit_id = cursor.lastrowid or 0
+        conn.commit()
+        return ArchiveResult(guia=guia, page_id=page_id, edit_id=edit_id)
+    finally:
+        conn.close()
+
+
 def archive_guide(
     db_path: Path,
     notion: NotionProvider,

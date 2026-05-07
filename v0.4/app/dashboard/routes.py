@@ -392,6 +392,43 @@ def update_fields(guia: str):
     return redirect(url_for("dashboard.guide_detail", guia=guia))
 
 
+@dashboard_bp.route("/guides/<path:guia>/unarchive", methods=["POST"])
+@login_required
+def unarchive_guide_route(guia: str):
+    """Restaurar una guía archivada (saca de papelera Notion + archived=0 local)."""
+    settings = current_app.config["SETTINGS"]
+    if not settings.notion_api_key or not settings.notion_data_source_id:
+        flash("Faltan credenciales de Notion en el servidor.", "error")
+        return redirect(url_for("dashboard.guide_detail", guia=guia))
+
+    from vaecos_v02.providers.notion_provider import NotionProvider
+    from vaecos_v02.app.services.update_guide import unarchive_guide
+
+    notion = NotionProvider(
+        api_key=settings.notion_api_key,
+        notion_version=settings.notion_version,
+        data_source_id=settings.notion_data_source_id,
+    )
+    autor = session.get("user_email", "unknown")
+
+    try:
+        result = unarchive_guide(
+            db_path=current_app.config["DB_PATH"],
+            notion=notion,
+            guia=guia,
+            autor=autor,
+        )
+    except (ValueError, LookupError) as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("dashboard.guide_detail", guia=guia))
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Notion rechazó la restauración: {exc}", "error")
+        return redirect(url_for("dashboard.guide_detail", guia=guia))
+
+    flash(f"Guía {result.guia} restaurada y disponible en /all-guides.", "ok")
+    return redirect(url_for("dashboard.guide_detail", guia=guia))
+
+
 @dashboard_bp.route("/guides/<path:guia>/archive", methods=["POST"])
 @login_required
 def archive_guide_route(guia: str):

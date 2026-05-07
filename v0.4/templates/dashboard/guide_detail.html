@@ -107,8 +107,14 @@
   </div>
 </div>
 {% else %}
-<div class="banner warn" style="margin-bottom:20px;">
-  Esta guía está archivada (eliminada de Notion). El historial sigue accesible aquí, pero no aparece en /all-guides ni en las corridas.
+<div class="banner warn" style="margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+  <div>
+    Esta guía está archivada (en la papelera de Notion). El historial sigue accesible aquí, pero no aparece en /all-guides ni en las corridas.
+  </div>
+  <form method="post" action="{{ url_for('dashboard.unarchive_guide_route', guia=guia) }}"
+        onsubmit="return confirm('¿Restaurar la guía {{ guia }}? Volverá a /all-guides y será procesable en corridas.');">
+    <button type="submit" class="btn">Restaurar</button>
+  </form>
 </div>
 {% endif %}
 {% endif %}
