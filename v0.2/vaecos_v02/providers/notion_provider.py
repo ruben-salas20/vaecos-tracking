@@ -123,6 +123,28 @@ class NotionProvider:
                     pass
             raise RuntimeError(f"Notion update failed: {detail}")
 
+    def archive_page(self, page_id: str) -> None:
+        """Archiva una página en Notion (la envía a la papelera, recuperable por 30 días).
+        Patrón Notion API: PATCH con {'archived': true}."""
+        endpoint = f"https://api.notion.com/v1/pages/{page_id}"
+        try:
+            self._request_json(endpoint, "PATCH", {"archived": True})
+        except error.HTTPError as exc:
+            try:
+                body = exc.read().decode("utf-8") if hasattr(exc, "read") else ""
+            except Exception:
+                body = ""
+            detail = f"{exc.code} {exc.reason}"
+            if body:
+                try:
+                    parsed = json.loads(body)
+                    msg = parsed.get("message") or parsed.get("code") or ""
+                    if msg:
+                        detail = f"{detail} — {msg}"
+                except Exception:
+                    pass
+            raise RuntimeError(f"Notion archive failed: {detail}")
+
     def update_guide_fields(
         self,
         page_id: str,

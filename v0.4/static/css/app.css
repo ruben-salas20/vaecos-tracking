@@ -316,6 +316,33 @@
   text-transform: capitalize;
 }
 
+/* Danger zone (acciones destructivas como archivar guía) */
+.panel.danger-zone {
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  background: rgba(220, 38, 38, 0.04);
+}
+[data-theme="dark"] .panel.danger-zone {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(220, 38, 38, 0.08);
+}
+.danger-zone-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+.danger-zone-title { font-size: 13px; font-weight: 600; color: #b91c1c; }
+[data-theme="dark"] .danger-zone-title { color: #fca5a5; }
+.danger-zone-sub {
+  font-size: 12px; color: var(--muted); margin-top: 2px; max-width: 540px;
+}
+.btn.btn-danger {
+  background: #dc2626; color: #fff; border-color: #b91c1c;
+}
+.btn.btn-danger:hover { background: #b91c1c; }
+[data-theme="dark"] .btn.btn-danger {
+  background: #ef4444; border-color: #dc2626;
+}
+[data-theme="dark"] .btn.btn-danger:hover { background: #dc2626; }
+
 /* Form de edición de campos en /guides/<g> */
 .guide-fields-grid {
   display: grid;

@@ -27,6 +27,64 @@ class FieldsUpdateResult:
     edit_ids: list[int] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class ArchiveResult:
+    guia: str
+    page_id: str
+    edit_id: int
+
+
+def archive_guide(
+    db_path: Path,
+    notion: NotionProvider,
+    guia: str,
+    autor: str,
+) -> ArchiveResult:
+    """Soft-delete: archiva la página en Notion (papelera 30 días) y marca
+    archived=1 en local. Preserva run_results, notes y audit.
+    Atomic: Notion FIRST; si falla, no se modifica nada local."""
+    conn = connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT page_id, cliente, archived FROM guides WHERE guia = ?",
+            (guia,),
+        ).fetchone()
+        if not row:
+            raise LookupError(f"La guía {guia} no existe en el snapshot local.")
+        if row["archived"]:
+            raise ValueError(f"La guía {guia} ya está archivada.")
+
+        page_id = row["page_id"]
+        cliente = row["cliente"] or ""
+        now = datetime.now().isoformat(timespec="seconds")
+
+        try:
+            notion.archive_page(page_id)
+        except Exception as exc:  # noqa: BLE001
+            conn.execute(
+                "INSERT INTO guide_edits (guia, autor, campo, valor_anterior, valor_nuevo, "
+                "created_at, sync_ok, error_msg) VALUES (?,?,?,?,?,?,0,?)",
+                (guia, autor, "__archive__", cliente, "", now, str(exc)),
+            )
+            conn.commit()
+            raise
+
+        conn.execute(
+            "UPDATE guides SET archived = 1, last_synced_at = ? WHERE guia = ?",
+            (now, guia),
+        )
+        cursor = conn.execute(
+            "INSERT INTO guide_edits (guia, autor, campo, valor_anterior, valor_nuevo, "
+            "created_at, sync_ok) VALUES (?,?,?,?,?,?,1)",
+            (guia, autor, "__archive__", cliente, "", now),
+        )
+        edit_id = cursor.lastrowid or 0
+        conn.commit()
+        return ArchiveResult(guia=guia, page_id=page_id, edit_id=edit_id)
+    finally:
+        conn.close()
+
+
 def update_guide_state(
     db_path: Path,
     notion: NotionProvider,

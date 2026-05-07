@@ -87,6 +87,30 @@
     </form>
   </div>
 </div>
+
+{% if not guide_row.archived %}
+<div class="panel danger-zone" style="margin-bottom:20px;">
+  <div class="panel-body">
+    <div class="danger-zone-row">
+      <div>
+        <div class="danger-zone-title">Archivar esta guía</div>
+        <div class="danger-zone-sub">
+          Se envía a la papelera de Notion (recuperable por 30 días) y se oculta de la lista.
+          El historial de corridas, notas y cambios se preserva.
+        </div>
+      </div>
+      <form method="post" action="{{ url_for('dashboard.archive_guide_route', guia=guia) }}"
+            onsubmit="return confirm('¿Archivar la guía {{ guia }}? Se mueve a la papelera de Notion (recuperable por 30 días).');">
+        <button type="submit" class="btn btn-danger">Archivar</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="banner warn" style="margin-bottom:20px;">
+  Esta guía está archivada (eliminada de Notion). El historial sigue accesible aquí, pero no aparece en /all-guides ni en las corridas.
+</div>
+{% endif %}
 {% endif %}
 
 <div class="panel" id="notas" style="margin-bottom:20px;scroll-margin-top:20px;">
