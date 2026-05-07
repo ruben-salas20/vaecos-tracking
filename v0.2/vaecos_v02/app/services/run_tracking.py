@@ -10,7 +10,6 @@ from vaecos_v02.core.rules import DEFAULT_RULES, classify_result_with_cooldown, 
 from vaecos_v02.providers.carrier import Carrier, CarrierConfig
 from vaecos_v02.providers.carriers import make_carrier
 from vaecos_v02.providers.notion_provider import NotionProvider
-from vaecos_v02.reporting.report_builder import write_reports
 from vaecos_v02.storage.db import clear_history, connect, init_db
 from vaecos_v02.storage.repositories import RunRepository
 from vaecos_v02.storage.rules_repository import RulesRepository
@@ -25,8 +24,11 @@ def execute_tracking(
     dry_run: bool,
     output_dir: str | None,
     save_raw_html: bool,
-) -> tuple[Path, Path, Path]:
+) -> int:
+    """Run tracking and persist results to SQLite. Returns the run_id.
+    Reports (.csv/.md/.pdf) ya no se generan: toda la información vive en la app."""
     started_at = datetime.now()
+    # Scratch dir solo se usa cuando save_raw_html=True (debugging del scraper).
     output_base_dir = Path(output_dir) if output_dir else settings.reports_dir
     run_dir = output_base_dir / started_at.strftime("%Y-%m-%d_%H-%M-%S")
 
@@ -206,11 +208,8 @@ def execute_tracking(
         results.append(result)
 
     repository.finalize_run(run_id, datetime.now(), results)
-    markdown_path, csv_path, pdf_path = write_reports(
-        run_context, results, notion_stats, missing_guides, run_id=run_id
-    )
     connection.close()
-    return markdown_path, csv_path, pdf_path
+    return run_id
 
 
 def list_runs_history(db_path: Path, limit: int) -> str:

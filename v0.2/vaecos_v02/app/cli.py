@@ -200,7 +200,7 @@ def main() -> int:
         for guide in ((getattr(args, "guides", None)) or [])
         if guide.strip()
     ]
-    markdown_path, csv_path, pdf_path = execute_tracking(
+    run_id = execute_tracking(
         settings=settings,
         selected_guides=selected_guides,
         all_active=getattr(args, "all_active", False) or not selected_guides,
@@ -208,9 +208,7 @@ def main() -> int:
         output_dir=getattr(args, "output_dir", None),
         save_raw_html=getattr(args, "save_raw_html", False),
     )
-    print(f"Informe generado: {markdown_path}")
-    print(f"CSV generado: {csv_path}")
-    print(f"PDF generado: {pdf_path}")
+    print(f"Corrida #{run_id} completada. Resultados disponibles en la app y en SQLite.")
     return 0
 
 
@@ -313,7 +311,7 @@ def _run_and_pause(
     settings, selected_guides, all_active, dry_run, save_raw_html
 ) -> None:
     try:
-        markdown_path, csv_path, pdf_path = execute_tracking(
+        run_id = execute_tracking(
             settings=settings,
             selected_guides=selected_guides,
             all_active=all_active,
@@ -322,10 +320,8 @@ def _run_and_pause(
             save_raw_html=save_raw_html,
         )
         _pause(
-            "Corrida completada.\n"
-            f"Informe: {markdown_path}\n"
-            f"CSV: {csv_path}\n\n"
-            f"PDF: {pdf_path}\n\n"
+            f"Corrida #{run_id} completada.\n"
+            "Resultados disponibles en la app y en SQLite.\n\n"
             "Presiona Enter para continuar."
         )
     except Exception as exc:  # noqa: BLE001
