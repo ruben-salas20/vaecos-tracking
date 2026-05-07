@@ -200,7 +200,10 @@
 }
 .app.sidebar-collapsed .user-card .btn,
 .app.sidebar-collapsed .user-card-chevron { display: none; }
-.app.sidebar-collapsed .user-card-trigger { padding: 0; gap: 0; }
+.app.sidebar-collapsed .user-card-trigger {
+  padding: 0; gap: 0;
+  justify-content: center;  /* avatar centrado en el sidebar colapsado */
+}
 
 /* User card trigger (clickable button wrapping avatar + info) */
 .user-card { position: relative; }
@@ -400,7 +403,9 @@
 [data-theme="dark"] .theme-toggle-btn .icon-moon { display: none; }
 .app.sidebar-collapsed .theme-toggle-btn { display: none; }
 
-/* Tooltip on collapsed nav items */
+/* Tooltip on collapsed nav items.
+   El bg/color están hardcodeados (no usar --ink): en dark mode esa variable
+   se INVIERTE a claro y el tooltip quedaba blanco-sobre-blanco ilegible. */
 .app.sidebar-collapsed .nav-item { position: relative; }
 .app.sidebar-collapsed .nav-item:hover::after {
   content: attr(data-label);
@@ -408,16 +413,21 @@
   left: calc(100% + 8px);
   top: 50%;
   transform: translateY(-50%);
-  background: var(--ink, #1a1a1a);
-  color: #fff;
+  background: #1a1a1a;
+  color: #ffffff;
   font-size: 12px;
   font-weight: 500;
   padding: 6px 10px;
   border-radius: var(--r-sm);
   white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   z-index: 100;
   pointer-events: none;
+}
+[data-theme="dark"] .app.sidebar-collapsed .nav-item:hover::after {
+  background: #2a2a2a;
+  color: #f5f5f5;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 .app.sidebar-collapsed .nav-item:hover::before {
   /* Small arrow pointing left toward the icon */
@@ -427,19 +437,25 @@
   top: 50%;
   transform: translateY(-50%);
   border: 4px solid transparent;
-  border-right-color: var(--ink, #1a1a1a);
+  border-right-color: #1a1a1a;
   z-index: 100;
   pointer-events: none;
+}
+[data-theme="dark"] .app.sidebar-collapsed .nav-item:hover::before {
+  border-right-color: #2a2a2a;
 }
 /* The active state already uses ::before for the brand-color bar.
    Reset that rule in collapsed+hover so our arrow shows. */
 .app.sidebar-collapsed .nav-item.active:hover::before {
   border: 4px solid transparent;
-  border-right-color: var(--ink, #1a1a1a);
+  border-right-color: #1a1a1a;
   background: transparent;
   width: auto;
   border-radius: 0;
   left: calc(100% + 2px);
   top: 50%;
   bottom: auto;
+}
+[data-theme="dark"] .app.sidebar-collapsed .nav-item.active:hover::before {
+  border-right-color: #2a2a2a;
 }
