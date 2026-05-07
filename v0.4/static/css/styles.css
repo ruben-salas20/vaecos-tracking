@@ -140,6 +140,7 @@ input, select, textarea { font: inherit; }
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  z-index: 30;  /* establece stacking context — sin esto los tooltips colapsados quedan detrás de los paneles del main */
 }
 
 .brand {
