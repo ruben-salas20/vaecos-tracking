@@ -279,6 +279,156 @@ class DashboardRepository:
                 ).fetchall()
             )
 
+    # Estados de Notion que representan "guía cerrada" (no requieren más gestión).
+    # Cualquier guía con estado_novedad fuera de esta lista se considera "caso abierto".
+    _TERMINAL_ESTADOS = (
+        "ENTREGADA",
+        "En Devolución",
+        "Solicitud devolución",
+        "Indemnización",
+        "Pago indemnización",
+    )
+
+    def clients_with_open_cases(self, limit: int = 10) -> list[sqlite3.Row]:
+        """Clientes ordenados por cantidad de guías ACTIVAS (no terminales, no archivadas).
+
+        Fuente: tabla local `guides` (snapshot Notion actual). Muestra
+        directamente "a quién le debo más entregas".
+        """
+        placeholders = ",".join("?" * len(self._TERMINAL_ESTADOS))
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    f"""
+                    SELECT
+                        g.cliente,
+                        COUNT(*) AS open_cases,
+                        SUM(CASE WHEN g.estado_novedad = 'Por recoger (INFORMADO)' THEN 1 ELSE 0 END) AS por_recoger,
+                        SUM(CASE WHEN g.estado_novedad = 'En novedad' THEN 1 ELSE 0 END) AS en_novedad,
+                        SUM(CASE WHEN g.estado_novedad = 'PENDIENTE CLIENTE' THEN 1 ELSE 0 END) AS pendiente_cliente,
+                        MAX(g.last_synced_at) AS last_seen
+                    FROM guides g
+                    WHERE g.archived = 0
+                      AND g.estado_novedad IS NOT NULL
+                      AND g.estado_novedad != ''
+                      AND g.estado_novedad NOT IN ({placeholders})
+                    GROUP BY g.cliente
+                    ORDER BY open_cases DESC, last_seen DESC
+                    LIMIT ?
+                    """,
+                    (*self._TERMINAL_ESTADOS, limit),
+                ).fetchall()
+            )
+
+    def backlog_old_count(self, min_days: int = 14) -> int:
+        """Cuenta de guías activas SIN movimiento hace más de N días calendario.
+
+        "Sin movimiento" = ``fecha_ultimo_seguimiento`` ≥ N días atrás (o NULL,
+        en cuyo caso usa ``created_at`` como proxy). Sólo guías no terminales.
+        """
+        placeholders = ",".join("?" * len(self._TERMINAL_ESTADOS))
+        with self._connect() as connection:
+            row = connection.execute(
+                f"""
+                SELECT COUNT(*) AS c
+                FROM guides g
+                WHERE g.archived = 0
+                  AND g.estado_novedad IS NOT NULL
+                  AND g.estado_novedad != ''
+                  AND g.estado_novedad NOT IN ({placeholders})
+                  AND date(COALESCE(g.fecha_ultimo_seguimiento, g.created_at)) <= date('now', ?)
+                """,
+                (*self._TERMINAL_ESTADOS, f"-{int(min_days)} days"),
+            ).fetchone()
+        return int(row["c"]) if row and row["c"] is not None else 0
+
+    def backlog_old_list(self, min_days: int = 14, limit: int = 20) -> list[sqlite3.Row]:
+        """Top N guías activas SIN movimiento hace más de min_days días.
+        Ordenadas por antigüedad (las más viejas primero).
+        """
+        placeholders = ",".join("?" * len(self._TERMINAL_ESTADOS))
+        with self._connect() as connection:
+            return list(
+                connection.execute(
+                    f"""
+                    SELECT
+                        g.guia, g.cliente, g.estado_novedad, g.carrier,
+                        COALESCE(g.fecha_ultimo_seguimiento, g.created_at) AS ultima_actividad,
+                        CAST(julianday('now') - julianday(COALESCE(g.fecha_ultimo_seguimiento, g.created_at)) AS INTEGER) AS dias_sin_movimiento
+                    FROM guides g
+                    WHERE g.archived = 0
+                      AND g.estado_novedad IS NOT NULL
+                      AND g.estado_novedad != ''
+                      AND g.estado_novedad NOT IN ({placeholders})
+                      AND date(COALESCE(g.fecha_ultimo_seguimiento, g.created_at)) <= date('now', ?)
+                    ORDER BY ultima_actividad ASC
+                    LIMIT ?
+                    """,
+                    (*self._TERMINAL_ESTADOS, f"-{int(min_days)} days", limit),
+                ).fetchall()
+            )
+
+    def resolution_rate(self) -> dict[str, int]:
+        """Tasa de resolución global (snapshot actual).
+
+        Returns dict con:
+          - total: total de guías no archivadas con estado
+          - resolved: guías en estados terminales (entregadas/devueltas/indemnización)
+          - active: guías activas (no terminales)
+          - rate_pct: % resolved / total (0-100, redondeado a 1 decimal)
+        """
+        placeholders = ",".join("?" * len(self._TERMINAL_ESTADOS))
+        with self._connect() as connection:
+            row = connection.execute(
+                f"""
+                SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN g.estado_novedad IN ({placeholders}) THEN 1 ELSE 0 END) AS resolved
+                FROM guides g
+                WHERE g.archived = 0
+                  AND g.estado_novedad IS NOT NULL
+                  AND g.estado_novedad != ''
+                """,
+                self._TERMINAL_ESTADOS,
+            ).fetchone()
+        total = int(row["total"]) if row and row["total"] is not None else 0
+        resolved = int(row["resolved"]) if row and row["resolved"] is not None else 0
+        active = total - resolved
+        rate = round((resolved / total) * 100, 1) if total else 0.0
+        return {"total": total, "resolved": resolved, "active": active, "rate_pct": rate}
+
+    def avg_cycle_time_days(self) -> dict[str, float | int]:
+        """Tiempo promedio de ciclo (días calendario) entre `created_at` y
+        última actividad para guías terminales.
+
+        Returns dict con:
+          - avg_days: promedio
+          - median_days: mediana (aprox)
+          - sample_size: cuántas guías cuentan
+        """
+        placeholders = ",".join("?" * len(self._TERMINAL_ESTADOS))
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT
+                    CAST(julianday(COALESCE(g.fecha_ultimo_seguimiento, g.last_synced_at))
+                         - julianday(g.created_at) AS INTEGER) AS dias
+                FROM guides g
+                WHERE g.archived = 0
+                  AND g.estado_novedad IN ({placeholders})
+                  AND g.created_at IS NOT NULL
+                """,
+                self._TERMINAL_ESTADOS,
+            ).fetchall()
+        valid = [int(r["dias"]) for r in rows if r["dias"] is not None and int(r["dias"]) >= 0]
+        if not valid:
+            return {"avg_days": 0.0, "median_days": 0, "sample_size": 0}
+        valid.sort()
+        n = len(valid)
+        avg = round(sum(valid) / n, 1)
+        median = valid[n // 2] if n % 2 == 1 else (valid[n // 2 - 1] + valid[n // 2]) // 2
+        return {"avg_days": avg, "median_days": median, "sample_size": n}
+
     def avg_time_in_status(self, days: int = 90) -> list[sqlite3.Row]:
         """Approximate how many consecutive runs a guide spends in each Effi status.
 

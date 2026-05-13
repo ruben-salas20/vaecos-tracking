@@ -1,109 +1,137 @@
 {% extends "base.html" %}
 {% from "macros.html" import carrier_badge %}
+{% from "partials/_info_tip.html" import info_tip, info_tip_styles %}
 {% block title %}Analytics{% endblock %}
 {% block content %}
+{{ info_tip_styles() }}
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Analytics</div>
-    <div class="page-sub">Insights operativos sobre las últimas {{ days }} corridas de seguimiento.</div>
+    <div class="page-sub">
+      {% if range_mode == 'custom' %}
+        Rango personalizado: <strong>{{ from_str }}</strong> → <strong>{{ to_str }}</strong> ({{ days }} días)
+      {% else %}
+        Últimos <strong>{{ days }}</strong> días
+      {% endif %}
+    </div>
   </div>
-  <div class="page-actions">
-    <a href="{{ url_for('dashboard.analytics', days=7) }}" class="btn {% if days == 7 %}primary{% endif %}">7 días</a>
-    <a href="{{ url_for('dashboard.analytics', days=30) }}" class="btn {% if days == 30 %}primary{% endif %}">30 días</a>
-    <a href="{{ url_for('dashboard.analytics', days=90) }}" class="btn {% if days == 90 %}primary{% endif %}">90 días</a>
+  <div>
+    <a href="{{ url_for('dashboard.analytics_manual') }}" class="btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;vertical-align:middle;"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      Manual de métricas
+    </a>
   </div>
 </div>
 
-{% if not kpi or total_rows == 0 %}
-<div class="banner info">Sin datos en los últimos {{ days }} días. Ejecuta al menos una corrida para ver analytics.</div>
-{% else %}
+{# ── Filtro de rango ─────────────────────────────────────────────── #}
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-body">
+    <form method="get" action="{{ url_for('dashboard.analytics') }}" style="display:flex;flex-wrap:wrap;gap:12px;align-items:end;">
+      <div style="display:flex;gap:6px;">
+        <a href="{{ url_for('dashboard.analytics', days=7) }}" class="btn btn-sm {% if range_mode == 'preset' and days == 7 %}primary{% endif %}">7d</a>
+        <a href="{{ url_for('dashboard.analytics', days=30) }}" class="btn btn-sm {% if range_mode == 'preset' and days == 30 %}primary{% endif %}">30d</a>
+        <a href="{{ url_for('dashboard.analytics', days=90) }}" class="btn btn-sm {% if range_mode == 'preset' and days == 90 %}primary{% endif %}">90d</a>
+      </div>
+      <div style="border-left:1px solid var(--border);padding-left:12px;display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
+        <div>
+          <label class="field-label" for="from">Desde</label>
+          <input class="input" type="date" id="from" name="from" value="{% if range_mode == 'custom' %}{{ from_str }}{% endif %}" style="width:150px;">
+        </div>
+        <div>
+          <label class="field-label" for="to">Hasta</label>
+          <input class="input" type="date" id="to" name="to" value="{% if range_mode == 'custom' %}{{ to_str }}{% endif %}" style="width:150px;">
+        </div>
+        <button type="submit" class="btn primary">Aplicar</button>
+      </div>
+      <div style="border-left:1px solid var(--border);padding-left:12px;">
+        <label class="field-label" for="backlog_days">Umbral backlog (días)</label>
+        <input class="input mono" type="number" id="backlog_days" name="backlog_days" min="1" max="90" value="{{ backlog_threshold }}" style="width:90px;">
+      </div>
+    </form>
+  </div>
+</div>
 
-<div class="kpi-grid" style="margin-bottom:20px;">
-  <div class="kpi">
-    <div class="kpi-label">Corridas</div>
-    <div class="kpi-value">{{ kpi['total_runs'] | int }}</div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-label">Guías únicas</div>
-    <div class="kpi-value">{{ kpi['unique_guides'] | int }}</div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-label">Cambios detectados</div>
-    <div class="kpi-value">{{ kpi['changed'] | int }}</div>
-  </div>
+{# ═══════════════════════ Bloque 1: OPERATIVO ══════════════════════ #}
+
+<div style="margin-bottom:8px;">
+  <h2 style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Operativo</h2>
+</div>
+
+<div class="kpi-grid" style="margin-bottom:16px;">
   <div class="kpi {% if por_recoger > 0 %}alert{% endif %}">
-    <div class="kpi-label">Por recoger en oficina</div>
+    <div class="kpi-label">Por recoger en oficina {{ info_tip('Guías que según Notion están en "Por recoger (INFORMADO)" — el cliente debe pasar a recogerlas a la agencia CARGO EXPRESO. Acción: avisarle al cliente.') }}</div>
     <div class="kpi-value">{{ por_recoger }}</div>
+    <div class="kpi-sub"><a href="{{ url_for('dashboard.por_recoger') }}">ver detalle</a></div>
   </div>
-  <div class="kpi {% if parse_err_rate > 5 %}alert{% endif %}">
-    <div class="kpi-label">Parse error rate</div>
-    <div class="kpi-value">{{ "%.1f" | format(parse_err_rate) }}%</div>
+  <div class="kpi {% if backlog_count > 0 %}alert{% endif %}">
+    <div class="kpi-label">Backlog antiguo (>{{ backlog_threshold }}d) {{ info_tip('Guías activas (no cerradas) que no han tenido cambio de estado en más de ' ~ backlog_threshold ~ ' días. Indica posible estancamiento — el cliente, el carrier o nosotros debemos hacer algo.') }}</div>
+    <div class="kpi-value">{{ backlog_count }}</div>
+    <div class="kpi-sub">guías sin movimiento</div>
   </div>
-  <div class="kpi {% if err_rate > 2 %}alert{% endif %}">
-    <div class="kpi-label">Error rate</div>
-    <div class="kpi-value">{{ "%.1f" | format(err_rate) }}%</div>
+  <div class="kpi">
+    <div class="kpi-label">Tasa de resolución {{ info_tip('Porcentaje de guías que llegaron a un estado terminal (ENTREGADA, En Devolución, Solicitud devolución, Indemnización). Más alto = más cierres. No depende del rango de fechas.') }}</div>
+    <div class="kpi-value">{{ "%.1f" | format(resolution.rate_pct) }}%</div>
+    <div class="kpi-sub">{{ resolution.resolved }} de {{ resolution.total }} cerradas</div>
   </div>
-  <div class="kpi {% if kpi['manual_review'] | int > 0 %}alert{% endif %}">
-    <div class="kpi-label">Revisión manual</div>
-    <div class="kpi-value">{{ kpi['manual_review'] | int }}</div>
+  <div class="kpi">
+    <div class="kpi-label">Tiempo de ciclo {{ info_tip('Promedio de días calendario entre que se creó la guía y su última actividad, contando solo guías ya cerradas. Más bajo = ciclos más rápidos.') }}</div>
+    <div class="kpi-value">{{ "%.1f" | format(cycle.avg_days) }}<span style="font-size:14px;color:var(--muted);"> d</span></div>
+    <div class="kpi-sub">promedio ({{ cycle.sample_size }} guías cerradas)</div>
+  </div>
+  <div class="kpi {% if breakdown.total_por_recoger > 0 %}alert{% endif %}">
+    <div class="kpi-label">Guías activas {{ info_tip('Total de guías que NO están cerradas (no ENTREGADA, no En Devolución, etc.) y no están archivadas. Es la cartera de trabajo abierta.') }}</div>
+    <div class="kpi-value">{{ resolution.active }}</div>
+    <div class="kpi-sub">sin cerrar</div>
   </div>
 </div>
 
+{# Desglose Por recoger #}
 <div style="margin-bottom:16px;">
-  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Desglose — Por recoger en oficina</h2>
+  <h3 style="font-size:13px;font-weight:600;margin-bottom:8px;">Desglose — Por recoger en oficina {{ info_tip('Histórico de guías que pasaron por "Por recoger". Entregadas = el cliente las recogió. Devueltas = no se recogieron y volvieron. Pendientes = siguen sin recoger.') }}</h3>
   <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);">
     <div class="kpi">
       <div class="kpi-label">Entregadas</div>
-      <div class="kpi-value">{{ breakdown['delivered'] }}</div>
+      <div class="kpi-value">{{ breakdown.delivered }}</div>
     </div>
-    <div class="kpi {% if breakdown['returned'] > 0 %}alert{% endif %}">
+    <div class="kpi {% if breakdown.returned > 0 %}alert{% endif %}">
       <div class="kpi-label">Devueltas</div>
-      <div class="kpi-value">{{ breakdown['returned'] }}</div>
+      <div class="kpi-value">{{ breakdown.returned }}</div>
     </div>
-    <div class="kpi {% if breakdown['total_por_recoger'] > 0 %}alert{% endif %}">
+    <div class="kpi {% if breakdown.total_por_recoger > 0 %}alert{% endif %}">
       <div class="kpi-label">Pendientes</div>
-      <div class="kpi-value">{{ breakdown['total_por_recoger'] }}</div>
+      <div class="kpi-value">{{ breakdown.total_por_recoger }}</div>
     </div>
   </div>
   <div style="margin-top:10px;">
-    <a href="{{ url_for('dashboard.por_recoger') }}" class="btn">Ver detalle completo</a>
+    <a href="{{ url_for('dashboard.por_recoger') }}" class="btn btn-sm">Ver detalle completo</a>
   </div>
 </div>
 
+{# Tendencia atención #}
 <div style="margin-bottom:16px;">
-  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Tendencia de atención</h2>
+  <h3 style="font-size:13px;font-weight:600;margin-bottom:8px;">Tendencia de atención {{ info_tip('Cuántas guías requirieron atención (no fueron "unchanged") cada día. Una pendiente al alza significa más casos abiertos acumulándose.') }}</h3>
   {{ trend_svg | safe }}
 </div>
 
+{# Backlog antiguo — top guías #}
+{% if backlog_top %}
 <div style="margin-bottom:16px;">
-  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Salud de las corridas</h2>
-  {{ bar_svg | safe }}
-</div>
-
-{% if carriers %}
-<div style="margin-bottom:16px;">
-  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Distribución por transportista</h2>
+  <h3 style="font-size:13px;font-weight:600;margin-bottom:8px;">Guías sin movimiento — top 10 más antiguas {{ info_tip('Las guías activas que llevan más tiempo sin cambio en Notion. Si una está hace 30+ días sin novedad, probablemente requiere gestión proactiva.') }}</h3>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Guías activas que no han tenido cambio en más de {{ backlog_threshold }} días.</p>
   <div class="panel">
     <div class="panel-body flush">
       <table class="tbl">
         <thead>
-          <tr>
-            <th>Transportista</th><th class="num">Guías únicas</th><th class="num">Filas</th>
-            <th class="num">Sin cambios</th><th class="num">Cambios</th><th class="num">Manual</th>
-            <th class="num">Parse error</th><th class="num">Error</th>
-          </tr>
+          <tr><th>Guía</th><th>Cliente</th><th>Estado actual</th><th class="num">Días sin movimiento</th><th>Última actividad</th></tr>
         </thead>
         <tbody>
-          {% for row in carriers %}
+          {% for row in backlog_top %}
           <tr>
-            <td>{{ carrier_badge(row['carrier']) }}</td>
-            <td class="num mono">{{ row['unique_guides'] | int }}</td>
-            <td class="num mono">{{ row['total_rows'] | int }}</td>
-            <td class="num mono">{{ row['unchanged'] | int }}</td>
-            <td class="num mono">{{ row['changed'] | int }}</td>
-            <td class="num mono">{{ row['manual_review'] | int }}</td>
-            <td class="num mono">{{ row['parse_error'] | int }}</td>
-            <td class="num mono">{{ row['error'] | int }}</td>
+            <td><a href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">{{ row['guia'] }}</a></td>
+            <td><a href="{{ url_for('dashboard.client_detail', cliente=row['cliente']) }}">{{ row['cliente'] | e }}</a></td>
+            <td>{{ row['estado_novedad'] | e or '—' }}</td>
+            <td class="num mono {% if row['dias_sin_movimiento'] >= backlog_threshold * 2 %}danger{% endif %}"><strong>{{ row['dias_sin_movimiento'] }}</strong></td>
+            <td class="mono">{{ row['ultima_actividad'] | fmt_ts }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -113,28 +141,33 @@
 </div>
 {% endif %}
 
-{% if clients %}
+{# Clientes con más casos abiertos #}
+{% if clients_open %}
 <div style="margin-bottom:16px;">
-  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Clientes con más issues</h2>
+  <h3 style="font-size:13px;font-weight:600;margin-bottom:8px;">Clientes con más casos abiertos {{ info_tip('Top 10 clientes con más guías activas en este momento. Útil para priorizar comunicación. Las columnas muestran cuántos casos hay en estados específicos.') }}</h3>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Top 10 clientes con más guías activas (no terminadas). Click para ver detalle del cliente.</p>
   <div class="panel">
     <div class="panel-body flush">
       <table class="tbl">
         <thead>
           <tr>
-            <th>Cliente</th><th class="num">Guías únicas</th><th class="num">Total issues</th>
-            <th class="num">Cambios</th><th class="num">Manual</th><th class="num">Parse error</th><th class="num">Error</th>
+            <th>Cliente</th>
+            <th class="num">Casos abiertos</th>
+            <th class="num">Por recoger</th>
+            <th class="num">En novedad</th>
+            <th class="num">Pendiente cliente</th>
+            <th>Último contacto</th>
           </tr>
         </thead>
         <tbody>
-          {% for row in clients %}
+          {% for row in clients_open %}
           <tr>
             <td><a href="{{ url_for('dashboard.client_detail', cliente=row['cliente']) }}">{{ row['cliente'] | e }}</a></td>
-            <td class="num mono">{{ row['unique_guides'] | int }}</td>
-            <td class="num mono"><strong>{{ row['total_issues'] | int }}</strong></td>
-            <td class="num mono">{{ row['changed'] | int }}</td>
-            <td class="num mono">{{ row['manual_review'] | int }}</td>
-            <td class="num mono">{{ row['parse_error'] | int }}</td>
-            <td class="num mono">{{ row['error'] | int }}</td>
+            <td class="num mono"><strong>{{ row['open_cases'] }}</strong></td>
+            <td class="num mono">{{ row['por_recoger'] or 0 }}</td>
+            <td class="num mono">{{ row['en_novedad'] or 0 }}</td>
+            <td class="num mono">{{ row['pendiente_cliente'] or 0 }}</td>
+            <td class="mono" style="font-size:11px;">{{ row['last_seen'] | fmt_ts }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -144,23 +177,27 @@
 </div>
 {% endif %}
 
+{# Tiempo promedio por estado Effi (con conversión a días) #}
 {% if status_rows %}
 <div style="margin-bottom:16px;">
-  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Tiempo promedio por estado Effi</h2>
-  <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Aproximación: promedio de corridas consecutivas que una guía permanece en cada estado dentro de la ventana.</p>
+  <h3 style="font-size:13px;font-weight:600;margin-bottom:8px;">Tiempo promedio por estado Effi {{ info_tip('Identifica cuellos de botella. Si "ALMACENADO EN BODEGA" tiene promedio alto, las guías se atascan ahí — vale la pena hablar con el carrier.') }}</h3>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Aproximación: promedio de corridas consecutivas que una guía permanece en cada estado dentro de los últimos {{ [days, 60] | max }} días. Asumiendo ~1 corrida/día, el promedio en corridas ≈ días.</p>
   <div class="panel">
     <div class="panel-body flush">
       <table class="tbl">
         <thead>
           <tr>
-            <th>Estado Effi</th><th class="num">Promedio de corridas</th><th class="num">Max</th><th class="num">Guías afectadas</th>
+            <th>Estado Effi</th>
+            <th class="num">Promedio (corridas ≈ días)</th>
+            <th class="num">Máximo</th>
+            <th class="num">Guías afectadas</th>
           </tr>
         </thead>
         <tbody>
           {% for row in status_rows %}
           <tr>
             <td>{{ row['status'] or '(sin estado)' | e }}</td>
-            <td class="num mono">{{ "%.2f" | format(row['avg_runs'] | float) }}</td>
+            <td class="num mono">{{ "%.1f" | format(row['avg_runs'] | float) }}</td>
             <td class="num mono">{{ row['max_runs'] | int }}</td>
             <td class="num mono">{{ row['guides_affected'] | int }}</td>
           </tr>
@@ -172,5 +209,37 @@
 </div>
 {% endif %}
 
-{% endif %}
+{# ═══════════════════════ Bloque 2: SISTEMA ════════════════════════ #}
+
+<div style="margin-top:32px;margin-bottom:8px;">
+  <h2 style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Performance del sistema</h2>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">Métricas técnicas del motor de tracking en los últimos {{ days }} días.</p>
+</div>
+
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">
+  <div class="kpi">
+    <div class="kpi-label">Guías únicas procesadas {{ info_tip('Cuántas guías distintas fueron procesadas por el motor en el rango. Una guía contada UNA vez aunque aparezca en varias corridas.') }}</div>
+    <div class="kpi-value">{{ kpi['unique_guides'] | int if kpi else 0 }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Cambios detectados {{ info_tip('Veces que el motor detectó un cambio de estado en una guía. Una guía puede generar varios cambios si su estado cambió varias veces.') }}</div>
+    <div class="kpi-value">{{ kpi['changed'] | int if kpi else 0 }}</div>
+  </div>
+  <div class="kpi {% if parse_err_rate > 5 %}alert{% endif %}">
+    <div class="kpi-label">Parse error rate {{ info_tip('% de filas donde el motor NO pudo leer el HTML de Effi. Si sube >5%, Effi cambió su layout y hay que revisar el parser.') }}</div>
+    <div class="kpi-value">{{ "%.1f" | format(parse_err_rate) }}%</div>
+    <div class="kpi-sub">HTML mal parseado</div>
+  </div>
+  <div class="kpi {% if err_rate > 2 %}alert{% endif %}">
+    <div class="kpi-label">Error rate {{ info_tip('% de filas con error técnico (timeouts de Effi, conexión, Notion API). Si sube >2%, hay un problema de infraestructura.') }}</div>
+    <div class="kpi-value">{{ "%.1f" | format(err_rate) }}%</div>
+    <div class="kpi-sub">errores técnicos del motor</div>
+  </div>
+</div>
+
+<div style="margin-bottom:16px;">
+  <h3 style="font-size:13px;font-weight:600;margin-bottom:8px;">Salud de las corridas {{ info_tip('Distribución diaria de resultados (unchanged/changed/manual_review/parse_error/error). Visualmente identificás picos anómalos.') }}</h3>
+  {{ bar_svg | safe }}
+</div>
+
 {% endblock %}

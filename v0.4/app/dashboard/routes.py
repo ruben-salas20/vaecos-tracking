@@ -32,9 +32,6 @@ def home():
                                latest=None,
                                count_map={},
                                needs_attention=0,
-                               unchanged=0,
-                               duration_text="",
-                               top_guides=[],
                                trend_svg="",
                                created=False)
 
@@ -42,10 +39,6 @@ def home():
     counts_rows = repo.result_counts(run_id)
     count_map = {str(row["resultado"]): int(row["total"]) for row in counts_rows}
     needs_attention = sum(v for k, v in count_map.items() if k != "unchanged")
-    unchanged = count_map.get("unchanged", 0)
-    duration = repo.run_duration_seconds(run_id)
-    duration_text = fmt_duration_seconds(duration) if duration else ""
-    top_guides = repo.top_guides_with_changes(limit=10)
     trend_rows = repo.attention_trend(days=30)
     trend_points = [(str(row["day"]), int(row["total"])) for row in trend_rows]
     trend_svg = line_chart("Atencion (30 dias)", trend_points, color="#dc2626")
@@ -56,9 +49,6 @@ def home():
         latest=latest,
         count_map=count_map,
         needs_attention=needs_attention,
-        unchanged=unchanged,
-        duration_text=duration_text,
-        top_guides=top_guides,
         trend_svg=trend_svg,
         created=created,
     )
@@ -99,36 +89,69 @@ def attention():
 @dashboard_bp.route("/analytics")
 @login_required
 def analytics():
-    repo = _repo()
-    try:
-        days = max(7, min(int(request.args.get("days") or "30"), 180))
-    except ValueError:
-        days = 30
+    from datetime import date as _date, timedelta as _td
 
-    kpi = repo.kpi_summary(days=days)
+    repo = _repo()
+
+    # ── Filtros: presets (?days=N) o rango custom (?from=YYYY-MM-DD&to=YYYY-MM-DD) ──
+    from_str = (request.args.get("from") or "").strip()
+    to_str = (request.args.get("to") or "").strip()
+    range_mode = "preset"
+    days = 30
+    if from_str and to_str:
+        try:
+            _date.fromisoformat(from_str)
+            _date.fromisoformat(to_str)
+            range_mode = "custom"
+            # Calcular `days` aproximado para queries que lo requieren
+            days = max(1, (_date.fromisoformat(to_str) - _date.fromisoformat(from_str)).days + 1)
+        except ValueError:
+            from_str = to_str = ""
+
+    if range_mode == "preset":
+        try:
+            days = max(7, min(int(request.args.get("days") or "30"), 365))
+        except ValueError:
+            days = 30
+        # Default presets para mostrar en UI
+        from_str = (_date.today() - _td(days=days - 1)).isoformat()
+        to_str = _date.today().isoformat()
+
+    # Umbral configurable para backlog
+    try:
+        backlog_threshold = max(1, min(int(request.args.get("backlog_days") or "14"), 90))
+    except ValueError:
+        backlog_threshold = 14
+
+    # ── KPIs operativos ────────────────────────────────────────────
     por_recoger = repo.latest_por_recoger_total()
     breakdown = repo.por_recoger_delivery_breakdown()
+    resolution = repo.resolution_rate()
+    cycle = repo.avg_cycle_time_days()
+    backlog_count = repo.backlog_old_count(min_days=backlog_threshold)
+    backlog_top = repo.backlog_old_list(min_days=backlog_threshold, limit=10)
+    clients_open = repo.clients_with_open_cases(limit=10)
+
+    # ── Gráfico de atención ────────────────────────────────────────
     trend_rows = repo.attention_trend(days=days)
     trend_points = [(str(row["day"]), int(row["total"])) for row in trend_rows]
-    trend_svg = line_chart(f"Guias que requirieron atencion por dia ({days} dias)", trend_points, color="#dc2626")
+    trend_svg = line_chart(
+        f"Guías que requirieron atención por día ({days} días)",
+        trend_points, color="#dc2626",
+    )
+
+    # ── Performance / Sistema (gráfico stacked + rates) ────────────
+    kpi = repo.kpi_summary(days=days)
     summary_rows = repo.runs_summary_by_day(days=days)
     days_axis = [str(row["day"]) for row in summary_rows]
-    _C_SILVER = "#cbd5e1"
-    _C_INFO   = "#4338ca"
-    _C_WARN   = "#d97706"
-    _C_PARSE  = "#ea580c"
-    _C_DANGER = "#dc2626"
     series = [
-        ("Sin cambios",    [int(r["unchanged"] or 0) for r in summary_rows],    _C_SILVER),
-        ("Cambios",        [int(r["changed"] or 0) for r in summary_rows],      _C_INFO),
-        ("Revision manual",[int(r["manual_review"] or 0) for r in summary_rows],_C_WARN),
-        ("Parse error",    [int(r["parse_error"] or 0) for r in summary_rows],  _C_PARSE),
-        ("Error",          [int(r["error"] or 0) for r in summary_rows],        _C_DANGER),
+        ("Sin cambios",    [int(r["unchanged"] or 0) for r in summary_rows],    "#cbd5e1"),
+        ("Cambios",        [int(r["changed"] or 0) for r in summary_rows],      "#4338ca"),
+        ("Revisión manual",[int(r["manual_review"] or 0) for r in summary_rows],"#d97706"),
+        ("Parse error",    [int(r["parse_error"] or 0) for r in summary_rows],  "#ea580c"),
+        ("Error",          [int(r["error"] or 0) for r in summary_rows],        "#dc2626"),
     ]
-    bar_svg = stacked_bar_chart(f"Resultados por dia ({days} dias)", days_axis, series)
-    carriers = repo.carrier_breakdown(days=days)
-    clients = repo.top_problem_clients(days=days, limit=10)
-    status_rows = repo.avg_time_in_status(days=max(days, 60))
+    bar_svg = stacked_bar_chart(f"Resultados por día ({days} días)", days_axis, series)
 
     total_rows = int(kpi["total_rows"] or 0) if kpi else 0
     parse_err = int(kpi["parse_error"] or 0) if kpi else 0
@@ -136,19 +159,31 @@ def analytics():
     parse_err_rate = (parse_err / total_rows * 100) if total_rows else 0.0
     err_rate = (err / total_rows * 100) if total_rows else 0.0
 
+    # ── Tiempo por estado Effi (con conversión a días aprox) ──────
+    status_rows = repo.avg_time_in_status(days=max(days, 60))
+
     return render_template(
         "dashboard/analytics.html",
+        range_mode=range_mode,
         days=days,
+        from_str=from_str,
+        to_str=to_str,
+        backlog_threshold=backlog_threshold,
+        # Operativo
+        por_recoger=por_recoger,
+        breakdown=breakdown,
+        resolution=resolution,
+        cycle=cycle,
+        backlog_count=backlog_count,
+        backlog_top=backlog_top,
+        clients_open=clients_open,
+        trend_svg=trend_svg,
+        # Sistema
         kpi=kpi,
         total_rows=total_rows,
         parse_err_rate=parse_err_rate,
         err_rate=err_rate,
-        por_recoger=por_recoger,
-        breakdown=breakdown,
-        trend_svg=trend_svg,
         bar_svg=bar_svg,
-        carriers=carriers,
-        clients=clients,
         status_rows=status_rows,
     )
 
@@ -159,6 +194,13 @@ def por_recoger():
     repo = _repo()
     breakdown = repo.por_recoger_detailed_breakdown()
     return render_template("dashboard/analytics_por_recoger.html", breakdown=breakdown)
+
+
+@dashboard_bp.route("/analytics/manual")
+@login_required
+def analytics_manual():
+    """Página de referencia que explica cada métrica de analytics."""
+    return render_template("dashboard/analytics_manual.html")
 
 
 @dashboard_bp.route("/runs")

@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}Manual de métricas{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Manual de métricas</div>
+    <div class="page-sub">Explicación detallada de cada KPI y tabla de la página de Analytics.</div>
+  </div>
+  <div>
+    <a href="{{ url_for('dashboard.analytics') }}" class="btn">Volver a Analytics</a>
+  </div>
+</div>
+
+<style>
+  .manual-section { margin-bottom:24px; }
+  .manual-section > h2 {
+    font-size:13px; font-weight:700; color:var(--muted);
+    text-transform:uppercase; letter-spacing:0.5px;
+    margin-bottom:12px; padding-bottom:8px;
+    border-bottom:1px solid var(--border);
+  }
+  .manual-metric {
+    background: var(--surface); border:1px solid var(--border); border-radius:8px;
+    padding:14px 16px; margin-bottom:10px;
+  }
+  .manual-metric h3 {
+    font-size:14px; font-weight:600; margin:0 0 6px 0; color: var(--ink);
+  }
+  .manual-metric .what {
+    font-size:13px; color:var(--ink); line-height:1.55; margin-bottom:6px;
+  }
+  .manual-metric .calc {
+    font-size:12px; color:var(--muted); line-height:1.5; margin-bottom:4px;
+  }
+  .manual-metric .calc code {
+    background: var(--border); color: var(--ink);
+    padding:1px 5px; border-radius:3px; font-size:11px;
+  }
+  .manual-metric .action {
+    font-size:12px; color:#1b5e20; line-height:1.5;
+    background:#e8f5e9; padding:6px 10px; border-radius:4px;
+    margin-top:6px; display:inline-block;
+  }
+  .manual-metric .warn {
+    font-size:12px; color:#e65100; line-height:1.5;
+    background:#fff3e0; padding:6px 10px; border-radius:4px;
+    margin-top:6px; display:inline-block;
+  }
+  /* Dark-mode-aware: badges con backgrounds pasteles cambian a oscuros sutiles */
+  [data-theme="dark"] .manual-metric .action {
+    background:#1b3a1d; color:#a5d6a7;
+  }
+  [data-theme="dark"] .manual-metric .warn {
+    background:#3d2914; color:#ffb74d;
+  }
+  .manual-toc {
+    background: var(--surface);
+    border:1px solid var(--border); border-radius:8px;
+    padding:14px 18px; margin-bottom:24px; font-size:13px;
+    color: var(--ink);
+  }
+  .manual-toc h3 { font-size:12px; font-weight:700; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); }
+  .manual-toc ul { list-style:none; padding:0; margin:0; column-count:2; column-gap:20px; }
+  .manual-toc li { margin-bottom:4px; break-inside:avoid; }
+  .manual-toc a { font-size:13px; }
+</style>
+
+<div class="manual-toc">
+  <h3>Índice</h3>
+  <ul>
+    <li><a href="#operativo">1. Bloque Operativo</a></li>
+    <li><a href="#por-recoger">→ Por recoger en oficina</a></li>
+    <li><a href="#backlog">→ Backlog antiguo</a></li>
+    <li><a href="#resolucion">→ Tasa de resolución</a></li>
+    <li><a href="#ciclo">→ Tiempo de ciclo</a></li>
+    <li><a href="#activas">→ Guías activas</a></li>
+    <li><a href="#desglose">→ Desglose Por recoger</a></li>
+    <li><a href="#tendencia">→ Tendencia de atención</a></li>
+    <li><a href="#sin-movimiento">→ Guías sin movimiento</a></li>
+    <li><a href="#clientes-abiertos">→ Clientes con más casos abiertos</a></li>
+    <li><a href="#tiempo-estado">→ Tiempo por estado Effi</a></li>
+    <li><a href="#sistema">2. Bloque Sistema</a></li>
+    <li><a href="#parse-err">→ Parse error rate</a></li>
+    <li><a href="#err-rate">→ Error rate</a></li>
+    <li><a href="#salud">→ Salud de las corridas</a></li>
+    <li><a href="#filtros">3. Filtros</a></li>
+  </ul>
+</div>
+
+<div class="manual-section" id="operativo">
+  <h2>1. Bloque operativo — lo que importa día a día</h2>
+
+  <div class="manual-metric" id="por-recoger">
+    <h3>Por recoger en oficina</h3>
+    <div class="what">Cantidad de guías que CARGO EXPRESO tiene en agencia esperando a que el cliente las recoja.</div>
+    <div class="calc"><strong>Cómo se calcula:</strong> COUNT de guías en la tabla local <code>guides</code> donde <code>estado_novedad = 'Por recoger (INFORMADO)'</code> y <code>archived = 0</code>.</div>
+    <div class="calc"><strong>Fuente:</strong> Notion (vía sync), no historial de corridas. Refleja el estado <em>actual</em>.</div>
+    <div class="action">✓ Acción: contactar al cliente para que pase a recoger antes de que la guía sea devuelta.</div>
+  </div>
+
+  <div class="manual-metric" id="backlog">
+    <h3>Backlog antiguo</h3>
+    <div class="what">Guías que llevan más de <em>N</em> días sin cambio (default 14, configurable).</div>
+    <div class="calc"><strong>Cómo se calcula:</strong> guías activas (no cerradas, no archivadas) donde <code>COALESCE(fecha_ultimo_seguimiento, created_at)</code> es mayor o igual a <em>N</em> días atrás.</div>
+    <div class="calc"><strong>Listado abajo:</strong> top 10 más antiguas con días sin movimiento. Si supera 2× el umbral, se resalta en rojo.</div>
+    <div class="warn">⚠ Si esta cifra crece, hay guías "perdidas" en el sistema. Revisar las top 10 una vez por semana.</div>
+  </div>
+
+  <div class="manual-metric" id="resolucion">
+    <h3>Tasa de resolución</h3>
+    <div class="what">Porcentaje de guías totales que llegaron a un estado terminal.</div>
+    <div class="calc"><strong>Estados terminales:</strong> ENTREGADA, En Devolución, Solicitud devolución, Indemnización, Pago indemnización.</div>
+    <div class="calc"><strong>Fórmula:</strong> <code>resueltas / total × 100</code>. No depende del rango de fechas — es snapshot global.</div>
+    <div class="action">✓ Sube cuando se cierran ciclos. Una operación sana mantiene esta tasa creciendo en el tiempo.</div>
+  </div>
+
+  <div class="manual-metric" id="ciclo">
+    <h3>Tiempo de ciclo</h3>
+    <div class="what">Promedio de días calendario entre la creación de una guía y su última actividad, solo para guías cerradas.</div>
+    <div class="calc"><strong>Cómo se calcula:</strong> <code>julianday(fecha_ultimo_seguimiento) − julianday(created_at)</code>, promediado sobre guías terminales.</div>
+    <div class="calc"><strong>Tamaño de muestra:</strong> debajo del número (entre paréntesis). Si la muestra es muy pequeña (&lt;20), el promedio no es estadísticamente confiable.</div>
+    <div class="action">✓ Si baja, los pedidos se cierran más rápido. Si sube, hay cuellos de botella.</div>
+  </div>
+
+  <div class="manual-metric" id="activas">
+    <h3>Guías activas</h3>
+    <div class="what">Total de guías sin cerrar (no terminales, no archivadas). Es la cartera de trabajo abierta del negocio.</div>
+    <div class="calc"><strong>Relación con tasa de resolución:</strong> <code>activas + resueltas = total</code>.</div>
+  </div>
+
+  <div class="manual-metric" id="desglose">
+    <h3>Desglose — Por recoger en oficina</h3>
+    <div class="what">Histórico del flujo de "Por recoger". Para cada guía que pasó por ese estado, su desenlace actual:</div>
+    <div class="calc"><strong>Entregadas:</strong> el cliente las recogió (estado actual contiene ENTREGAD).</div>
+    <div class="calc"><strong>Devueltas:</strong> el cliente no recogió, volvieron (DEVOLUCI / DEVUELT / INDEMN).</div>
+    <div class="calc"><strong>Pendientes:</strong> siguen Por recoger. Mismo número que el KPI grande "Por recoger en oficina".</div>
+    <div class="action">✓ Una operación sana tiene mucho más "Entregadas" que "Devueltas". Si las devueltas suben, hay un problema de comunicación con clientes.</div>
+  </div>
+
+  <div class="manual-metric" id="tendencia">
+    <h3>Tendencia de atención</h3>
+    <div class="what">Línea diaria de cuántas guías requirieron atención (no fueron "unchanged" en su corrida).</div>
+    <div class="warn">⚠ Una pendiente sostenida al alza significa que el trabajo abierto está acumulándose. Una pendiente plana o a la baja es señal de salud.</div>
+  </div>
+
+  <div class="manual-metric" id="sin-movimiento">
+    <h3>Guías sin movimiento — top 10</h3>
+    <div class="what">Las 10 guías activas más antiguas (que llevan más tiempo sin novedad).</div>
+    <div class="calc"><strong>Misma definición de "sin movimiento"</strong> que el KPI Backlog. Lista cliente, estado actual, días y última actividad.</div>
+    <div class="action">✓ Mirar esta tabla 1× semana — son los casos donde tu intervención hace más diferencia.</div>
+  </div>
+
+  <div class="manual-metric" id="clientes-abiertos">
+    <h3>Clientes con más casos abiertos</h3>
+    <div class="what">Top 10 clientes con más guías activas en este momento.</div>
+    <div class="calc"><strong>Columnas:</strong> Casos abiertos (total) · Por recoger · En novedad · Pendiente cliente · Último contacto.</div>
+    <div class="action">✓ Identifica clientes que requieren más atención. Click en el nombre te lleva al detalle del cliente.</div>
+  </div>
+
+  <div class="manual-metric" id="tiempo-estado">
+    <h3>Tiempo promedio por estado Effi</h3>
+    <div class="what">Cuántas corridas (≈ días, asumiendo 1 corrida/día) tarda una guía en moverse de cada estado de Effi.</div>
+    <div class="calc"><strong>Cómo se calcula:</strong> agrupa filas consecutivas de cada guía por estado y cuenta. Luego promedia.</div>
+    <div class="action">✓ Identifica cuellos de botella. Si "ALMACENADO EN BODEGA" tiene promedio alto, las guías se atascan ahí — vale la pena gestionar con el carrier.</div>
+  </div>
+</div>
+
+<div class="manual-section" id="sistema">
+  <h2>2. Bloque sistema — performance del motor</h2>
+
+  <div class="manual-metric">
+    <h3>Guías únicas procesadas</h3>
+    <div class="what">Cuántas guías distintas fueron procesadas por el motor en el rango. Una guía contada UNA vez aunque haya aparecido en varias corridas.</div>
+  </div>
+
+  <div class="manual-metric">
+    <h3>Cambios detectados</h3>
+    <div class="what">Total de veces que el motor detectó un cambio de estado en una guía en el rango.</div>
+    <div class="calc">A diferencia de "Guías únicas", una misma guía puede generar varios cambios si su estado se movió varias veces.</div>
+  </div>
+
+  <div class="manual-metric" id="parse-err">
+    <h3>Parse error rate</h3>
+    <div class="what">% de filas donde el motor NO pudo leer el HTML de Effi (parser falló).</div>
+    <div class="warn">⚠ Si sube por encima de <strong>5%</strong>, Effi probablemente cambió su estructura HTML. Hay que revisar el parser en <code>v0.2/vaecos_v02/providers/effi_provider.py</code>.</div>
+  </div>
+
+  <div class="manual-metric" id="err-rate">
+    <h3>Error rate</h3>
+    <div class="what">% de filas con error técnico (timeouts de Effi, conexión, Notion API).</div>
+    <div class="warn">⚠ Si sube por encima de <strong>2%</strong>, hay un problema de infraestructura (red, DNS, Effi caído, Notion rate-limited).</div>
+  </div>
+
+  <div class="manual-metric" id="salud">
+    <h3>Salud de las corridas</h3>
+    <div class="what">Distribución diaria de resultados (unchanged/changed/manual_review/parse_error/error) en barras apiladas.</div>
+    <div class="action">✓ Visualmente identificás picos anómalos. Una columna con mucho rojo o naranja es señal de un día problemático que vale revisar.</div>
+  </div>
+</div>
+
+<div class="manual-section" id="filtros">
+  <h2>3. Filtros disponibles</h2>
+
+  <div class="manual-metric">
+    <h3>Rango de fechas</h3>
+    <div class="what"><strong>Presets</strong>: <code>7d / 30d / 90d</code> son botones rápidos.</div>
+    <div class="what"><strong>Custom</strong>: usá los campos "Desde" / "Hasta" para un rango arbitrario.</div>
+    <div class="calc">El rango afecta los KPIs del bloque Sistema y los gráficos. Los KPIs del bloque Operativo (Por recoger, Backlog, Tasa de resolución, Tiempo de ciclo) son SNAPSHOTS y no se filtran por fecha — siempre muestran el estado actual.</div>
+  </div>
+
+  <div class="manual-metric">
+    <h3>Umbral de backlog</h3>
+    <div class="what">Número de días para considerar que una guía está "estancada".</div>
+    <div class="calc">Default: 14 días. Configurable de 1 a 90.</div>
+    <div class="action">✓ Bajalo (ej. 7) si querés ser más agresivo detectando estancamiento. Subilo (ej. 30) si los ciclos típicos de tu operación son largos.</div>
+  </div>
+</div>
+
+{% endblock %}
