@@ -390,6 +390,141 @@ def _ensure_import_log_table(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
+def _ensure_effi_catalog_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "effi_catalog"):
+        return
+    connection.execute("""
+        CREATE TABLE effi_catalog (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sku TEXT NOT NULL UNIQUE,
+            descripcion_exacta TEXT NOT NULL,
+            precio_declarado REAL NOT NULL,
+            tipo TEXT NOT NULL DEFAULT 'otro'
+                CHECK (tipo IN ('intimo_femenino', 'otro')),
+            activo INTEGER NOT NULL DEFAULT 1,
+            notas TEXT,
+            aliases TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            updated_by TEXT NOT NULL DEFAULT 'sistema'
+        )
+    """)
+    connection.execute("CREATE INDEX idx_effi_catalog_sku ON effi_catalog (sku)")
+    connection.commit()
+
+
+def _ensure_effi_catalog_aliases_column(connection: sqlite3.Connection) -> None:
+    """Idempotent: add 'aliases' column to existing effi_catalog tables."""
+    if not _table_exists(connection, "effi_catalog"):
+        return
+    if _column_exists(connection, "effi_catalog", "aliases"):
+        return
+    connection.execute(
+        "ALTER TABLE effi_catalog ADD COLUMN aliases TEXT NOT NULL DEFAULT '[]'"
+    )
+    connection.commit()
+
+
+def _ensure_effi_orders_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "effi_orders"):
+        return
+    connection.execute("""
+        CREATE TABLE effi_orders (
+            orden_id INTEGER PRIMARY KEY,
+            cliente TEXT,
+            direccion TEXT,
+            productos_json TEXT NOT NULL,
+            classification TEXT NOT NULL
+                CHECK (classification IN ('combo', 'femenino', 'otro', 'escalation')),
+            valor_declarado REAL,
+            contenido_modo TEXT
+                CHECK (contenido_modo IS NULL OR contenido_modo IN ('copiar_documento', 'texto_manual')),
+            contenido_texto TEXT,
+            address_status TEXT
+                CHECK (address_status IS NULL OR address_status IN ('valid', 'review', 'invalid')),
+            remision_id INTEGER,
+            guia_id INTEGER,
+            status TEXT NOT NULL
+                CHECK (status IN ('done', 'failed', 'human_review', 'pending')),
+            error_msg TEXT,
+            processed_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    connection.execute("CREATE INDEX idx_effi_orders_status ON effi_orders (status)")
+    connection.execute("CREATE INDEX idx_effi_orders_processed_at ON effi_orders (processed_at)")
+    connection.commit()
+
+
+def _ensure_effi_review_queue_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "effi_review_queue"):
+        return
+    connection.execute("""
+        CREATE TABLE effi_review_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            orden_id INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            details_json TEXT,
+            created_at TEXT NOT NULL,
+            resolved INTEGER NOT NULL DEFAULT 0,
+            resolved_by TEXT,
+            resolved_at TEXT,
+            resolution_notes TEXT
+        )
+    """)
+    connection.execute("CREATE INDEX idx_effi_review_queue_resolved ON effi_review_queue (resolved)")
+    connection.execute("CREATE INDEX idx_effi_review_queue_orden_id ON effi_review_queue (orden_id)")
+    connection.commit()
+
+
+def _ensure_effi_audit_log_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "effi_audit_log"):
+        return
+    connection.execute("""
+        CREATE TABLE effi_audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT NOT NULL,
+            action TEXT NOT NULL,
+            orden_id INTEGER,
+            actor TEXT NOT NULL DEFAULT 'bot',
+            payload_json TEXT,
+            ok INTEGER NOT NULL DEFAULT 1
+        )
+    """)
+    connection.execute("CREATE INDEX idx_effi_audit_log_ts ON effi_audit_log (ts)")
+    connection.execute("CREATE INDEX idx_effi_audit_log_orden_id ON effi_audit_log (orden_id)")
+    connection.commit()
+
+
+def seed_effi_catalog(connection: sqlite3.Connection) -> None:
+    """Seed initial catalog if effi_catalog is empty."""
+    if not _table_exists(connection, "effi_catalog"):
+        return
+    count = connection.execute("SELECT COUNT(*) FROM effi_catalog").fetchone()[0]
+    if count > 0:
+        return
+    from datetime import datetime as _datetime
+    now = _datetime.now().isoformat(timespec="seconds")
+    seed = [
+        ("CREMA ESTRECHANTE",                    "CREMA ESTRECHANTE",                    32.0, "intimo_femenino"),
+        ("GEL ESTIMULANTE MULTI ORGÁSMICO",      "GEL ESTIMULANTE MULTI ORGÁSMICO",      34.0, "intimo_femenino"),
+        ("INSTANT VIRGIN",                       "INSTANT VIRGIN",                       76.0, "intimo_femenino"),
+        ("DERMAN",                               "DERMAN",                               76.0, "otro"),
+        ("HEMOCREAM",                            "HEMOCREAM",                            71.0, "otro"),
+        ("MOBIFLEX",                             "MOBIFLEX",                             80.0, "otro"),
+        ("FEMPRO",                               "FEMPRO",                               95.0, "otro"),
+    ]
+    for sku, descripcion, precio, tipo in seed:
+        connection.execute(
+            """
+            INSERT INTO effi_catalog (sku, descripcion_exacta, precio_declarado, tipo, activo, created_at, updated_at, updated_by)
+            VALUES (?, ?, ?, ?, 1, ?, ?, 'seed')
+            """,
+            (sku, descripcion, precio, tipo, now, now),
+        )
+    connection.commit()
+
+
 def _apply_migrations(connection: sqlite3.Connection) -> None:
     """Idempotent ALTERs for schemas created before new columns existed."""
     _migrate_legacy_rules_table(connection)
@@ -416,6 +551,12 @@ def _apply_migrations(connection: sqlite3.Connection) -> None:
     _ensure_guides_table(connection)
     _ensure_guide_notes_table(connection)
     _ensure_guide_edits_table(connection)
+    _ensure_effi_catalog_table(connection)
+    _ensure_effi_catalog_aliases_column(connection)
+    _ensure_effi_orders_table(connection)
+    _ensure_effi_review_queue_table(connection)
+    _ensure_effi_audit_log_table(connection)
+    seed_effi_catalog(connection)
 
 
 def _migrate_legacy_rules_table(connection: sqlite3.Connection) -> None:

@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Catálogo Effi{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Catálogo Effi</div>
+    <div class="page-sub">Productos reconocibles por el clasificador. Los íntimos femeninos usan contenido custom; el resto usa "Copiar del documento".</div>
+  </div>
+</div>
+
+<div class="users-layout">
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Productos ({{ items | length }})</div>
+    </div>
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Descripción exacta (Effi)</th>
+            <th>Aliases</th>
+            <th style="text-align:right;">Precio declarado</th>
+            <th>Tipo</th>
+            <th>Estado</th>
+            <th>Actualizado</th>
+            <th style="min-width:220px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in items %}
+          <tr>
+            <td class="mono">{{ it.sku | e }}</td>
+            <td>{{ it.descripcion_exacta | e }}</td>
+            <td>
+              {% if it.aliases %}
+                <span class="pill neutral" title="{{ it.aliases | join(' · ') | e }}">
+                  <span class="dot"></span>{{ it.aliases | length }}
+                </span>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td style="text-align:right;" class="mono">${{ '%.2f' % it.precio_declarado }}</td>
+            <td>
+              {% if it.tipo == 'intimo_femenino' %}
+              <span class="pill warn"><span class="dot"></span>íntimo femenino</span>
+              {% else %}
+              <span class="pill neutral"><span class="dot"></span>otro</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if it.activo %}
+              <span class="pill ok"><span class="dot"></span>Activo</span>
+              {% else %}
+              <span class="pill danger"><span class="dot"></span>Inactivo</span>
+              {% endif %}
+            </td>
+            <td>{{ it.updated_at | fmt_ts }}</td>
+            <td>
+              <div class="row-actions">
+                <a href="{{ url_for('effi.catalog_edit', item_id=it.id) }}" class="btn btn-sm">Editar</a>
+                <form method="post" action="{{ url_for('effi.catalog_toggle', item_id=it.id) }}">
+                  <button type="submit" class="btn btn-sm {% if it.activo %}danger{% endif %}">
+                    {{ 'Desactivar' if it.activo else 'Activar' }}
+                  </button>
+                </form>
+                <form method="post" action="{{ url_for('effi.catalog_delete', item_id=it.id) }}"
+                      onsubmit="return confirm('¿Eliminar producto {{ it.sku | e }}? Esta acción no se puede deshacer.')">
+                  <button type="submit" class="btn btn-sm danger">Eliminar</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px;">El catálogo está vacío.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Nuevo producto</div>
+    </div>
+    <div class="panel-body">
+      <form method="post" action="{{ url_for('effi.catalog_create') }}" class="fieldgroup">
+        <div>
+          <label class="field-label" for="sku">SKU</label>
+          <input class="input" type="text" id="sku" name="sku" required maxlength="80" placeholder="EJ: HEMOCREAM">
+          <div class="field-help">Identificador único; usalo en mayúsculas como aparece en Effi.</div>
+        </div>
+        <div>
+          <label class="field-label" for="descripcion_exacta">Descripción exacta en Effi</label>
+          <input class="input" type="text" id="descripcion_exacta" name="descripcion_exacta" required maxlength="200" placeholder="Texto exacto como aparece en la orden">
+          <div class="field-help">Debe coincidir EXACTAMENTE con el texto del campo descripción en Effi para que el clasificador lo reconozca.</div>
+        </div>
+        <div>
+          <label class="field-label" for="precio_declarado">Precio declarado (USD)</label>
+          <input class="input" type="number" id="precio_declarado" name="precio_declarado" required min="0" step="0.01" placeholder="0.00">
+          <div class="field-help">Valor unitario que se declara en la guía de transporte.</div>
+        </div>
+        <div>
+          <label class="field-label" for="tipo">Tipo</label>
+          <select class="input" id="tipo" name="tipo">
+            <option value="otro">otro — usa "Copiar del documento"</option>
+            <option value="intimo_femenino">íntimo femenino — usa texto custom "N* PRODUCTO FEMENINO VAECOS"</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-label" for="aliases">Aliases (opcional)</label>
+          <textarea class="input mono" id="aliases" name="aliases" rows="3"
+                    placeholder="Un alias por línea. Ej:&#10;ESTRECHANTE&#10;CR ESTRECHANTE"></textarea>
+          <div class="field-help">Variantes con las que el producto puede aparecer en Effi. Una por línea. Matching case-insensitive y sin tildes.</div>
+        </div>
+        <div>
+          <label class="field-label" for="notas">Notas (opcional)</label>
+          <textarea class="input" id="notas" name="notas" rows="2" maxlength="500"></textarea>
+        </div>
+        <button type="submit" class="btn primary">Agregar producto</button>
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -79,12 +79,13 @@ Migrations are idempotent functions in `v0.2/vaecos_v02/storage/db.py` called on
 
 ### v0.4 web server (current)
 
-Flask app factory in `v0.4/app/__init__.py`. Five blueprints:
+Flask app factory in `v0.4/app/__init__.py`. Six blueprints:
 - `auth` — `/login`, `/logout`, `/change-password`, `/mi-cuenta` (perfil + cambio de password en una sola página)
 - `dashboard` — 14 GETs migrated from v0.3 + `/all-guides`, `/search`, `/guides/new` (crear), `/guides/<g>/notes`, `/guides/<g>/state`, `/guides/<g>/fields` (Phase 2.2), `/guides/<g>/archive` y `/guides/<g>/unarchive` (Phase 2.3)
 - `runs` — `/run/new`, `/run/progress/<token>`, `/runs/<id>/export/effi`, `/sync/notion`, `/sync/progress/<token>`
 - `import_guides` — `/import` (upload + preview + confirm; confirm creates Notion pages)
 - `users` — `/users`, `/users/<id>/{toggle,delete,reset-password}` (admin-only)
+- `effi` (Creador guías) — `/effi` dashboard, `/effi/catalog` CRUD (admin), `/effi/queue` cola humana, `/effi/audit` historial, `/effi/run/manual` trigger + `/effi/run/progress/<token>` polling JSON.
 
 v0.4 imports v0.2 (engine) and v0.3 (`DashboardRepository`, charts) directly via `sys.path.insert`. Bootstrap admin is seeded on first start from `V04_BOOTSTRAP_EMAIL` / `V04_BOOTSTRAP_PASSWORD`.
 
@@ -126,7 +127,58 @@ V04_PORT=8765
 # Updates from GitHub Releases
 V02_UPDATE_REPO=ruben-salas20/vaecos-tracking
 V02_UPDATE_GITHUB_TOKEN=                  # required for private release repo
+
+# Effi ERP (módulo Creador guías)
+EFFI_USERNAME=
+EFFI_PASSWORD=
+EFFI_SESSION_PATH=v0.2/data/effi-session.json
+EFFI_HEADLESS=true
+EFFI_BASE_URL=https://effi.com.co
+EFFI_NAVIGATION_TIMEOUT_MS=30000
+
+# Notificaciones email (opcional — si están vacías, el notifier solo logea)
+NOTIFY_EMAIL=                              # destinatario(s) separados por coma
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_FROM=
+SMTP_USE_SSL=false                         # true para puerto 465
 ```
+
+### Módulo Creador guías (Effi)
+
+Stack: Playwright (Chromium headless) + storageState reusable. Flujo end-to-end:
+1. `scripts/effi_login.py` — login interactivo una vez al mes; guarda `effi-session.json`.
+2. Bot lee `/app/orden_v`, filtra `PEDIDO CONFIRMADO` sin remisión.
+3. Por cada orden: lee productos del modal, valida dirección, clasifica con `effi_catalog`.
+4. Decide: ejecutar (write) / escalar a cola humana / saltar (ya procesada).
+5. Persiste en `effi_orders` (idempotente), `effi_audit_log`, `effi_review_queue`.
+
+Tablas (todas creadas por migración idempotente en `v0.2/vaecos_v02/storage/db.py`):
+- `effi_catalog` — productos con `descripcion_exacta`, `aliases` (JSON), `tipo` (`intimo_femenino`|`otro`), `precio_declarado`.
+- `effi_orders` — PK `orden_id`, status (`done`|`failed`|`human_review`|`pending`), classification, valor, remision/guia ids.
+- `effi_audit_log` — historial granular de acciones del bot.
+- `effi_review_queue` — cola para casos no automatizables.
+
+Scripts:
+- `python scripts/effi_login.py [--auto|--headless]` — generar/renovar sesión.
+- `python scripts/effi_dry_run.py [--limit N|--order N]` — escanear sin escribir.
+- `python scripts/effi_run_one.py --order N [--apply]` — procesar UNA orden.
+- `python scripts/effi_run.py [--apply] [--limit N]` — masivo (usado por cron).
+
+Cron VPS (cada hora, modo apply):
+```
+# Como vaecos@VPS, crontab -e:
+0 * * * * cd /opt/vaecos && .venv/bin/python scripts/effi_run.py --apply >> /opt/vaecos/logs/effi.log 2>&1
+```
+
+Asegurarse que `/opt/vaecos/logs/` exista y sea writable por `vaecos`. Para inspeccionar:
+```bash
+tail -f /opt/vaecos/logs/effi.log
+```
+
+Recovery cuando expira sesión: el bot manda email vía notifier (si está configurado) y deja un audit log de tipo `health_check` fallido. Renovar localmente con `effi_login.py` y subir el nuevo `effi-session.json` al VPS con scp.
 
 ### Adding a new carrier
 

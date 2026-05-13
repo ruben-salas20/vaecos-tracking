@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Corrida Effi en progreso{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Corrida Effi {% if job.mode == 'apply' %}(APPLY){% else %}(dry-run){% endif %}</div>
+    <div class="page-sub">Token: <span class="mono">{{ token }}</span></div>
+  </div>
+  <div>
+    <a href="{{ url_for('effi.dashboard') }}" class="btn">Volver al dashboard</a>
+  </div>
+</div>
+
+<div class="panel" id="job-panel">
+  <div class="panel-head">
+    <div class="panel-title" id="job-status">{{ job.status }}</div>
+  </div>
+  <div class="panel-body">
+    <div id="job-progress" class="muted">Iniciando…</div>
+    <div id="job-summary" style="margin-top:16px;"></div>
+    <div id="job-error" style="margin-top:16px;color:#c00;"></div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const token = {{ token | tojson }};
+  const statusEl  = document.getElementById('job-status');
+  const progEl    = document.getElementById('job-progress');
+  const sumEl     = document.getElementById('job-summary');
+  const errEl     = document.getElementById('job-error');
+
+  function render(job) {
+    statusEl.textContent = job.status;
+    if (job.status === 'running') {
+      const cur = job.current || 0;
+      const tot = job.total || 0;
+      const ord = job.current_order ? `#${job.current_order}` : '—';
+      progEl.textContent = `Procesando ${cur}/${tot}${ord !== '—' ? ' · orden ' + ord : ''}…`;
+    } else if (job.status === 'done') {
+      const s = job.summary || {};
+      progEl.textContent = '';
+      sumEl.innerHTML = `
+        <h3 style="margin-top:0;">Resumen</h3>
+        <ul style="line-height:1.8;">
+          <li>Filas escaneadas: <strong>${s.total_seen ?? 0}</strong></li>
+          <li>Necesitan proceso: <strong>${s.needs_processing ?? 0}</strong></li>
+          <li>✓ Procesadas: <strong>${s.processed ?? 0}</strong></li>
+          <li>🟡 Escaladas: <strong>${s.escalated ?? 0}</strong></li>
+          <li>✗ Fallidas: <strong>${s.failed ?? 0}</strong></li>
+          <li>⏭ Saltadas (ya done): <strong>${s.skipped ?? 0}</strong></li>
+        </ul>
+        <p style="margin-top:16px;">
+          <a href="{{ url_for('effi.dashboard') }}" class="btn primary">Volver al dashboard</a>
+          <a href="{{ url_for('effi.queue_list') }}" class="btn">Ver cola humana</a>
+        </p>
+      `;
+    } else if (job.status === 'error') {
+      progEl.textContent = '';
+      errEl.textContent = job.error || 'Error desconocido';
+    }
+  }
+
+  function poll() {
+    fetch(`{{ url_for('effi.run_progress_json', token=token) }}`)
+      .then(r => r.json())
+      .then(job => {
+        render(job);
+        if (job.status === 'running') {
+          setTimeout(poll, 1500);
+        }
+      })
+      .catch(e => {
+        errEl.textContent = 'Error consultando estado: ' + e;
+      });
+  }
+  poll();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Editar producto · {{ item.sku }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Editar producto</div>
+    <div class="page-sub"><span class="mono">{{ item.sku | e }}</span> · creado {{ item.created_at | fmt_ts }}</div>
+  </div>
+  <div>
+    <a href="{{ url_for('effi.catalog_list') }}" class="btn">Volver al catálogo</a>
+  </div>
+</div>
+
+<div class="panel" style="max-width:640px;">
+  <div class="panel-head">
+    <div class="panel-title">Datos del producto</div>
+  </div>
+  <div class="panel-body">
+    {% if error %}
+    <div class="flash error" style="margin-bottom:12px;">{{ error | e }}</div>
+    {% endif %}
+    <form method="post" action="{{ url_for('effi.catalog_edit', item_id=item.id) }}" class="fieldgroup">
+      <div>
+        <label class="field-label">SKU</label>
+        <input class="input mono" type="text" value="{{ item.sku | e }}" disabled>
+        <div class="field-help">El SKU no se puede modificar. Si necesitás cambiarlo, elimina y crea uno nuevo.</div>
+      </div>
+      <div>
+        <label class="field-label" for="descripcion_exacta">Descripción exacta en Effi</label>
+        <input class="input" type="text" id="descripcion_exacta" name="descripcion_exacta" required maxlength="200" value="{{ item.descripcion_exacta | e }}">
+      </div>
+      <div>
+        <label class="field-label" for="precio_declarado">Precio declarado (USD)</label>
+        <input class="input" type="number" id="precio_declarado" name="precio_declarado" required min="0" step="0.01" value="{{ '%.2f' % item.precio_declarado }}">
+      </div>
+      <div>
+        <label class="field-label" for="tipo">Tipo</label>
+        <select class="input" id="tipo" name="tipo">
+          <option value="otro" {% if item.tipo == 'otro' %}selected{% endif %}>otro — usa "Copiar del documento"</option>
+          <option value="intimo_femenino" {% if item.tipo == 'intimo_femenino' %}selected{% endif %}>íntimo femenino — usa texto custom</option>
+        </select>
+      </div>
+      <div>
+        <label class="field-label" for="aliases">Aliases</label>
+        <textarea class="input mono" id="aliases" name="aliases" rows="4"
+                  placeholder="Un alias por línea. Ej:&#10;ESTRECHANTE&#10;CR ESTRECHANTE">{{ item.aliases | join('\n') }}</textarea>
+        <div class="field-help">Variantes con las que el producto puede aparecer en Effi. Una por línea. Matching case-insensitive y sin tildes.</div>
+      </div>
+      <div>
+        <label class="field-label" for="notas">Notas</label>
+        <textarea class="input" id="notas" name="notas" rows="2" maxlength="500">{{ item.notas or '' | e }}</textarea>
+      </div>
+      <div>
+        <button type="submit" class="btn primary">Guardar cambios</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

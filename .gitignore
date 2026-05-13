@@ -17,3 +17,8 @@ vaecos-v*.zip
 v0.2/v0.2/
 v0.2/tests/_debug_post.py
 docs/db-operadora/
+
+# Playwright CLI temp artifacts (testing browser sessions)
+.playwright-cli/
+*-checkout.yaml
+*-after-submit.yaml

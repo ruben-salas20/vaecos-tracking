@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Audit log · Creador guías{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Audit log</div>
+    <div class="page-sub">
+      {% if only_order %}Acciones del bot sobre la orden <span class="mono">#{{ only_order }}</span>
+      {% else %}Últimas 200 acciones del bot.{% endif %}
+    </div>
+  </div>
+  <div>
+    {% if only_order %}
+      <a href="{{ url_for('effi.audit_list') }}" class="btn">Ver todo</a>
+    {% endif %}
+    <a href="{{ url_for('effi.dashboard') }}" class="btn">Volver al dashboard</a>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-body flush">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Acción</th>
+          <th>Orden</th>
+          <th>Actor</th>
+          <th>OK</th>
+          <th>Payload</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in entries %}
+        <tr>
+          <td>{{ e.ts | fmt_ts }}</td>
+          <td class="mono">{{ e.action }}</td>
+          <td class="mono">
+            {% if e.orden_id %}
+              <a href="{{ url_for('effi.audit_list', orden_id=e.orden_id) }}">{{ e.orden_id }}</a>
+            {% else %}—{% endif %}
+          </td>
+          <td>{{ e.actor }}</td>
+          <td>{% if e.ok %}<span class="pill ok"><span class="dot"></span>✓</span>{% else %}<span class="pill danger"><span class="dot"></span>✗</span>{% endif %}</td>
+          <td class="mono" style="max-width:560px;font-size:11px;color:var(--muted);">{{ e.payload_json or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px;">Sin eventos registrados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

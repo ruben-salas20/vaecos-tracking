@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Cola humana · Creador guías{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Cola humana</div>
+    <div class="page-sub">Órdenes que el bot no pudo procesar automáticamente y requieren revisión.</div>
+  </div>
+  <div>
+    <a href="{{ url_for('effi.dashboard') }}" class="btn">Volver al dashboard</a>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <div class="panel-title">{{ items | selectattr('resolved', 'equalto', 0) | list | length }} pendientes · {{ items | length }} totales (últimos 100)</div>
+  </div>
+  <div class="panel-body flush">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Orden</th>
+          <th>Motivo</th>
+          <th>Detalle</th>
+          <th>Creado</th>
+          <th>Estado</th>
+          <th style="min-width:180px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td class="mono">{{ it.orden_id }}</td>
+          <td>
+            {% if it.reason == 'pedido_mixto' %}<span class="pill warn"><span class="dot"></span>mixto</span>
+            {% elif it.reason == 'producto_no_en_catalogo' %}<span class="pill warn"><span class="dot"></span>producto desconocido</span>
+            {% elif it.reason == 'direccion_invalida' %}<span class="pill danger"><span class="dot"></span>dirección inválida</span>
+            {% elif it.reason == 'direccion_review' %}<span class="pill neutral"><span class="dot"></span>dirección ambigua</span>
+            {% elif it.reason == 'remision_sin_guia' %}<span class="pill danger"><span class="dot"></span>remisión sin guía</span>
+            {% else %}<span class="pill neutral"><span class="dot"></span>{{ it.reason }}</span>
+            {% endif %}
+          </td>
+          <td style="max-width:480px;">
+            <div>{{ it.details.message or '—' }}</div>
+            {% if it.details.address_reasons %}
+              <div class="muted" style="font-size:11px;margin-top:4px;">dirección: {{ it.details.address_reasons | join(' · ') }}</div>
+            {% endif %}
+            {% if it.details.productos %}
+              <div class="muted" style="font-size:11px;margin-top:4px;">
+                {% for p in it.details.productos %}{{ p[1] }}× {{ p[0] }}{% if not loop.last %} · {% endif %}{% endfor %}
+              </div>
+            {% endif %}
+            {% if it.details.plan_kind %}
+              <div class="muted" style="font-size:11px;margin-top:4px;">
+                plan: {{ it.details.plan_kind }} · ${{ '%.2f' % it.details.plan_valor }} ·
+                {% if it.details.plan_contenido_modo == 'texto_manual' %}"{{ it.details.plan_contenido_texto }}"
+                {% else %}Copiar del documento{% endif %}
+              </div>
+            {% endif %}
+          </td>
+          <td>{{ it.created_at | fmt_ts }}</td>
+          <td>
+            {% if it.resolved %}
+              <span class="pill ok"><span class="dot"></span>resuelto</span>
+              {% if it.resolved_by %}<div class="muted" style="font-size:11px;">por {{ it.resolved_by | e }}</div>{% endif %}
+            {% else %}
+              <span class="pill warn"><span class="dot"></span>pendiente</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="row-actions">
+              <a href="{{ url_for('effi.audit_list', orden_id=it.orden_id) }}" class="btn btn-sm">Audit</a>
+              {% if not it.resolved %}
+              <form method="post" action="{{ url_for('effi.queue_resolve', item_id=it.id) }}">
+                <button type="submit" class="btn btn-sm primary"
+                        onclick="return confirm('¿Marcar este item como resuelto? Confirmá que ya completaste el flujo manualmente en Effi.')">
+                  Resolver
+                </button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px;">No hay items en la cola.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

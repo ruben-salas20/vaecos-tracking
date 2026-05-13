@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Creador guías{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Creador guías</div>
+    <div class="page-sub">Automatización Orden → Remisión → Guía en Effi ERP.</div>
+  </div>
+  <div class="row-actions">
+    <a href="{{ url_for('effi.queue_list') }}" class="btn">
+      Cola humana{% if pending_queue %} <span class="pill warn" style="margin-left:6px;">{{ pending_queue }}</span>{% endif %}
+    </a>
+    <a href="{{ url_for('effi.audit_list') }}" class="btn">Audit log</a>
+  </div>
+</div>
+
+<div class="kpi-grid" style="margin-bottom:16px;">
+  <div class="kpi">
+    <div class="kpi-label">Procesadas hoy</div>
+    <div class="kpi-value">{{ processed_today }}</div>
+    <div class="kpi-sub">guías creadas correctamente</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">En cola humana</div>
+    <div class="kpi-value">{{ pending_queue }}</div>
+    <div class="kpi-sub">items pendientes de revisión</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Fallidas hoy</div>
+    <div class="kpi-value">{{ failed_today }}</div>
+    <div class="kpi-sub">errores del bot</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Catálogo activo</div>
+    <div class="kpi-value">{{ catalog_count }}</div>
+    <div class="kpi-sub">{{ catalog_intimo_count }} íntimos femeninos</div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-head">
+    <div class="panel-title">Procesar ahora</div>
+  </div>
+  <div class="panel-body">
+    <form method="post" action="{{ url_for('effi.run_manual') }}" class="fieldgroup" style="max-width:520px;">
+      <div>
+        <label class="field-label" for="only_order">Orden específica (opcional)</label>
+        <input class="input" type="number" id="only_order" name="only_order" placeholder="Dejar vacío para procesar todas las pendientes">
+        <div class="field-help">Si lo dejás vacío, se procesarán TODAS las órdenes en estado PEDIDO CONFIRMADO sin remisión.</div>
+      </div>
+      <div>
+        <label class="field-label" for="limit">Límite de órdenes (opcional)</label>
+        <input class="input" type="number" id="limit" name="limit" placeholder="Sin límite" min="1">
+      </div>
+      <div>
+        <label class="field-label">
+          <input type="checkbox" name="apply" value="1"> Ejecutar en modo REAL (escribir en Effi)
+        </label>
+        <div class="field-help">Sin marcar = dry-run (no escribe nada, solo muestra qué haría).</div>
+      </div>
+      <button type="submit" class="btn primary">Lanzar corrida</button>
+    </form>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">
+    <div class="panel-title">Últimas órdenes procesadas</div>
+  </div>
+  <div class="panel-body flush">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Orden</th>
+          <th>Estado</th>
+          <th>Clasificación</th>
+          <th style="text-align:right;">Valor</th>
+          <th>Remisión</th>
+          <th>Guía</th>
+          <th>Procesada</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in recent_orders %}
+        <tr>
+          <td class="mono">{{ o.orden_id }}</td>
+          <td>
+            {% if o.status == 'done' %}<span class="pill ok"><span class="dot"></span>OK</span>
+            {% elif o.status == 'human_review' %}<span class="pill warn"><span class="dot"></span>revisión</span>
+            {% elif o.status == 'failed' %}<span class="pill danger"><span class="dot"></span>error</span>
+            {% else %}<span class="pill neutral"><span class="dot"></span>{{ o.status }}</span>
+            {% endif %}
+          </td>
+          <td>{{ o.classification or '—' }}</td>
+          <td style="text-align:right;" class="mono">{% if o.valor_declarado %}${{ '%.2f' % o.valor_declarado }}{% else %}—{% endif %}</td>
+          <td class="mono">{{ o.remision_id or '—' }}</td>
+          <td class="mono">{{ o.guia_id or '—' }}</td>
+          <td>{{ o.processed_at | fmt_ts }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px;">Aún no hay órdenes procesadas.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if current_user.role == 'admin' %}
+<div style="margin-top:16px;">
+  <a href="{{ url_for('effi.catalog_list') }}" class="btn">Administrar catálogo</a>
+</div>
+{% endif %}
+{% endblock %}

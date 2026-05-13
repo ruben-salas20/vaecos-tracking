@@ -56,11 +56,13 @@ def create_app() -> Flask:
     from .runs.routes import runs_bp
     from .import_guides.routes import import_bp
     from .users.routes import users_bp
+    from .effi_guides.routes import effi_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(runs_bp)
     app.register_blueprint(import_bp)
     app.register_blueprint(users_bp)
+    app.register_blueprint(effi_bp)
 
     @app.errorhandler(429)
     def _ratelimit_handler(e):
