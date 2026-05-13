@@ -3,7 +3,7 @@ import re
 import sys
 from pathlib import Path
 from flask import Blueprint, render_template, request, redirect, url_for, current_app, session, jsonify, abort, flash
-from ..auth.decorators import login_required
+from ..auth.decorators import admin_required, login_required
 from ..charts import line_chart, stacked_bar_chart
 from ..utils import fmt_duration_seconds, format_date_short
 
@@ -597,6 +597,336 @@ def run_new():
 
 
 @dashboard_bp.route("/rules")
-@login_required
+@admin_required
 def rules():
-    return render_template("dashboard/rules_maintenance.html")
+    """Lista de reglas del motor de tracking. Solo admin."""
+    from vaecos_v02.storage.db import connect as v02_connect
+    from vaecos_v02.storage.rules_repository import RulesRepository
+
+    carrier_filter = (request.args.get("carrier") or "").strip()
+    show_disabled = request.args.get("show_disabled") == "1"
+
+    conn = v02_connect(current_app.config["DB_PATH"])
+    try:
+        repo = RulesRepository(conn)
+        rules_list = repo.list_rules(
+            carrier=carrier_filter or None,
+            only_enabled=not show_disabled,
+        )
+    finally:
+        conn.close()
+
+    total = len(rules_list)
+    enabled_count = sum(1 for r in rules_list if r.enabled)
+    return render_template(
+        "dashboard/rules_list.html",
+        rules=rules_list,
+        total=total,
+        enabled_count=enabled_count,
+        disabled_count=total - enabled_count,
+        carrier_filter=carrier_filter,
+        show_disabled=show_disabled,
+    )
+
+
+@dashboard_bp.route("/rules/new", methods=["GET", "POST"])
+@admin_required
+def rule_new():
+    return _rule_form(rule_id=None)
+
+
+@dashboard_bp.route("/rules/<int:rule_id>/edit", methods=["GET", "POST"])
+@admin_required
+def rule_edit(rule_id: int):
+    return _rule_form(rule_id=rule_id)
+
+
+def _rule_form(rule_id: int | None):
+    """Maneja create + edit. Si rule_id es None, crea; si es int, edita."""
+    from vaecos_v02.core.models import Rule
+    from vaecos_v02.storage.db import connect as v02_connect
+    from vaecos_v02.storage.rules_repository import RulesRepository
+
+    db_path = current_app.config["DB_PATH"]
+    error: str | None = None
+
+    if request.method == "POST":
+        try:
+            estado_kind = (request.form.get("estado_match_kind") or "any").strip()
+            novelty_kind = (request.form.get("novelty_match_kind") or "any").strip()
+            estado_values = _split_lines(request.form.get("estado_match_values"))
+            novelty_values = _split_lines(request.form.get("novelty_match_values"))
+            days_cmp_raw = (request.form.get("days_comparator") or "").strip()
+            days_cmp = days_cmp_raw or None
+            days_threshold_raw = (request.form.get("days_threshold") or "").strip()
+            days_threshold = int(days_threshold_raw) if days_threshold_raw else None
+
+            rule = Rule(
+                id=rule_id,
+                carrier=(request.form.get("carrier") or "effi").strip(),
+                name=(request.form.get("name") or "").strip(),
+                priority=int((request.form.get("priority") or "100").strip()),
+                enabled=request.form.get("enabled") == "1",
+                estado_match_kind=estado_kind,
+                estado_match_values=estado_values,
+                novelty_match_kind=novelty_kind,
+                novelty_match_values=novelty_values,
+                days_comparator=days_cmp,
+                days_threshold=days_threshold,
+                estado_propuesto=(request.form.get("estado_propuesto") or "").strip() or None,
+                motivo_template=(request.form.get("motivo_template") or "").strip(),
+                requiere_accion=(request.form.get("requiere_accion") or "").strip(),
+                review_needed=request.form.get("review_needed") == "1",
+                notes=(request.form.get("notes") or "").strip(),
+            )
+            conn = v02_connect(db_path)
+            try:
+                saved = RulesRepository(conn).save_rule(
+                    rule, changed_by=session.get("user_email", "admin"),
+                )
+            finally:
+                conn.close()
+            flash(
+                f"Regla {'creada' if rule_id is None else 'actualizada'}: {saved.name}.",
+                "ok",
+            )
+            return redirect(url_for("dashboard.rules"))
+        except (ValueError, TypeError) as e:
+            error = str(e)
+
+    # GET o POST con error → render form
+    existing = None
+    if rule_id is not None:
+        conn = v02_connect(db_path)
+        try:
+            existing = RulesRepository(conn).get_rule(rule_id)
+        finally:
+            conn.close()
+        if existing is None:
+            flash(f"Regla #{rule_id} no encontrada.", "error")
+            return redirect(url_for("dashboard.rules"))
+
+    return render_template(
+        "dashboard/rule_edit.html",
+        rule=existing,
+        error=error,
+        form=request.form if request.method == "POST" else None,
+    )
+
+
+@dashboard_bp.route("/rules/<int:rule_id>/toggle", methods=["POST"])
+@admin_required
+def rule_toggle(rule_id: int):
+    from vaecos_v02.storage.db import connect as v02_connect
+    from vaecos_v02.storage.rules_repository import RulesRepository
+
+    conn = v02_connect(current_app.config["DB_PATH"])
+    try:
+        result = RulesRepository(conn).toggle_rule(
+            rule_id, changed_by=session.get("user_email", "admin"),
+        )
+    finally:
+        conn.close()
+    if result is None:
+        flash(f"Regla #{rule_id} no encontrada.", "error")
+    else:
+        flash(
+            f"Regla '{result.name}' {'activada' if result.enabled else 'desactivada'}.",
+            "ok",
+        )
+    return redirect(url_for("dashboard.rules"))
+
+
+@dashboard_bp.route("/rules/<int:rule_id>/delete", methods=["POST"])
+@admin_required
+def rule_delete(rule_id: int):
+    from vaecos_v02.storage.db import connect as v02_connect
+    from vaecos_v02.storage.rules_repository import RulesRepository
+
+    conn = v02_connect(current_app.config["DB_PATH"])
+    try:
+        repo = RulesRepository(conn)
+        existing = repo.get_rule(rule_id)
+        ok = repo.delete_rule(rule_id, changed_by=session.get("user_email", "admin"))
+    finally:
+        conn.close()
+    if ok and existing:
+        flash(f"Regla '{existing.name}' eliminada.", "ok")
+    else:
+        flash(f"Regla #{rule_id} no encontrada.", "error")
+    return redirect(url_for("dashboard.rules"))
+
+
+@dashboard_bp.route("/rules/preview", methods=["GET", "POST"])
+@admin_required
+def rule_preview():
+    """Simulador: dado un estado/novedad/días, muestra qué regla matchearía
+    y qué decisión produciría el motor. NO escribe nada — read-only."""
+    from datetime import date as _date, datetime as _dt, timedelta as _td
+    from vaecos_v02.core.models import EffiNovedadEvent, EffiStatusEvent, EffiTrackingData
+    from vaecos_v02.core.rules import decide_status
+    from vaecos_v02.storage.db import connect as v02_connect
+    from vaecos_v02.storage.rules_repository import RulesRepository
+
+    if request.method == "GET":
+        return render_template("dashboard/rule_preview.html", form=None, result=None, error=None, autofilled=False)
+
+    form = dict(request.form)
+    action = form.get("action", "evaluate")
+    guia_input = (form.get("guia") or "").strip()
+    error: str | None = None
+
+    # ── Modo autofill: cargar desde guía existente ────────────────
+    if action == "autofill":
+        if not guia_input:
+            return render_template(
+                "dashboard/rule_preview.html",
+                form=form, result=None, autofilled=False,
+                error="Ingresá un número de guía para auto-completar.",
+            )
+        autofilled, error = _autofill_from_guia(guia_input, current_app.config["DB_PATH"])
+        if error:
+            return render_template(
+                "dashboard/rule_preview.html",
+                form=form, result=None, autofilled=False, error=error,
+            )
+        return render_template(
+            "dashboard/rule_preview.html",
+            form=autofilled, result=None, autofilled=True, error=None,
+        )
+
+    # ── Modo evaluate ─────────────────────────────────────────────
+    estado_effi = (form.get("estado_effi") or "").strip()
+    novelty = (form.get("novelty") or "").strip()
+    days_since_raw = (form.get("days_since") or "").strip()
+    carrier = (form.get("carrier") or "effi").strip()
+    notion_estado_raw = (form.get("notion_estado") or "").strip()
+    notion_estado = notion_estado_raw or None
+
+    status_history = []
+    days_value: int | None = None
+    if estado_effi:
+        status_date = None
+        if days_since_raw.isdigit():
+            days_value = int(days_since_raw)
+            status_date = _dt.combine(_date.today() - _td(days=days_value), _dt.min.time())
+        status_history.append(EffiStatusEvent(date=status_date, status=estado_effi))
+
+    novelty_history = []
+    if novelty:
+        novelty_history.append(EffiNovedadEvent(date=None, novelty=novelty, details=""))
+
+    tracking = EffiTrackingData(
+        url="",
+        estado_actual=estado_effi or None,
+        status_history=status_history,
+        novelty_history=novelty_history,
+    )
+
+    conn = v02_connect(current_app.config["DB_PATH"])
+    try:
+        rules_list = RulesRepository(conn).list_rules(carrier=carrier, only_enabled=True)
+    finally:
+        conn.close()
+
+    decision = decide_status(
+        tracking, _date.today(),
+        rules=rules_list, carrier=carrier, notion_estado=notion_estado,
+    )
+
+    return render_template(
+        "dashboard/rule_preview.html",
+        form=form, result=decision, autofilled=False, error=None,
+        rules_evaluated=len(rules_list),
+        days_value=days_value,
+    )
+
+
+def _autofill_from_guia(guia: str, db_path):
+    """Devuelve (form_dict, error) con los últimos datos de tracking del guía."""
+    from datetime import datetime as _dt, date as _date
+    from vaecos_v02.storage.db import connect as v02_connect
+
+    conn = v02_connect(db_path)
+    try:
+        row = conn.execute(
+            """
+            SELECT rr.run_id, rr.carrier, rr.estado_notion_actual, rr.estado_effi_actual
+            FROM run_results rr
+            WHERE rr.guia = ?
+            ORDER BY rr.run_id DESC
+            LIMIT 1
+            """,
+            (guia,),
+        ).fetchone()
+        if row is None:
+            return None, f"La guía '{guia}' no tiene corridas previas en la base."
+
+        run_id = row["run_id"]
+        status_evt = conn.execute(
+            """
+            SELECT event_at, status FROM tracking_status_events
+            WHERE run_id = ? AND guia = ?
+            ORDER BY event_at DESC LIMIT 1
+            """,
+            (run_id, guia),
+        ).fetchone()
+        novelty_evt = conn.execute(
+            """
+            SELECT event_at, novelty FROM tracking_novelty_events
+            WHERE run_id = ? AND guia = ?
+            ORDER BY event_at DESC LIMIT 1
+            """,
+            (run_id, guia),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    days_since = ""
+    if status_evt and status_evt["event_at"]:
+        try:
+            ev_dt = _dt.fromisoformat(status_evt["event_at"])
+            days_since = str(max(0, (_date.today() - ev_dt.date()).days))
+        except (ValueError, TypeError):
+            days_since = ""
+
+    return {
+        "guia": guia,
+        "carrier": (row["carrier"] or "effi").strip(),
+        "notion_estado": row["estado_notion_actual"] or "",
+        "estado_effi": (row["estado_effi_actual"] or (status_evt["status"] if status_evt else "")),
+        "novelty": novelty_evt["novelty"] if novelty_evt else "",
+        "days_since": days_since,
+    }, None
+
+
+@dashboard_bp.route("/rules/<int:rule_id>/history")
+@admin_required
+def rule_history(rule_id: int):
+    from vaecos_v02.storage.db import connect as v02_connect
+    from vaecos_v02.storage.rules_repository import RulesRepository
+
+    conn = v02_connect(current_app.config["DB_PATH"])
+    try:
+        repo = RulesRepository(conn)
+        rule = repo.get_rule(rule_id)
+        history = repo.history_for_rule(rule_id)
+    finally:
+        conn.close()
+    if rule is None:
+        flash(f"Regla #{rule_id} no encontrada.", "error")
+        return redirect(url_for("dashboard.rules"))
+    return render_template("dashboard/rule_history.html", rule=rule, history=history)
+
+
+def _split_lines(text: str | None) -> list[str]:
+    """Convierte un textarea en lista, una línea = un valor, sin vacíos ni duplicados."""
+    if not text:
+        return []
+    seen: dict[str, str] = {}
+    for line in text.replace("\r", "").split("\n"):
+        s = line.strip()
+        if not s:
+            continue
+        seen.setdefault(s.lower(), s)
+    return list(seen.values())

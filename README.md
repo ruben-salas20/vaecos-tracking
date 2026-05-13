@@ -1,12 +1,19 @@
 # Seguimiento VAECOS
 
-VAECOS Seguimiento reconcilia el estado de las guías en Notion contra lo que reporta el transportista (Effi) y, cuando amerita, actualiza Notion automáticamente. Hoy es una **aplicación web multi-usuario en producción** en `https://app.vaecos.com`, operada por la dueña y la operadora desde el navegador.
+VAECOS Seguimiento es la plataforma logística interna de VAECOS Guatemala. Cumple dos funciones:
 
-## Estado actual (2026-05-10)
+1. **Seguimiento de guías**: reconcilia el estado de las guías en Notion contra lo que reporta el transportista (Effi), aplica reglas configurables, y actualiza Notion automáticamente.
+2. **Creador de guías (Effi)**: convierte órdenes de venta confirmadas en remisiones + guías CARGO EXPRESO en el ERP de Effi sin intervención manual. Incluye clasificador determinista + IA (MiniMax) para validar direcciones, cola humana para excepciones, y digest por email.
+
+Aplicación web multi-usuario en producción en `https://app.vaecos.com`.
+
+## Estado actual (2026-05-13)
 
 - **Producción**: `https://app.vaecos.com` — Hostinger VPS + Caddy (TLS automático) + systemd + Waitress
 - **Interfaz principal**: v0.4 (Flask + auth + dark mode)
-- **Fase actual**: 2.3 entregada (motor lee desde local, edición de campos, alta/archivo/restauración de guías). Pendiente 2.4 (inversión de polaridad: local FIRST, Notion mirror).
+- **Tracking**: Fase 2.3 entregada (motor lee desde local, edición de campos, alta/archivo/restauración). Pendiente 2.4 (inversión de polaridad).
+- **Creador guías Effi**: módulo completo end-to-end (catálogo con aliases, classifier, address regex+IA, bot Playwright, cola humana, audit log, trigger UI/cron, email digest HTML).
+- **Reglas del motor**: CRUD completo admin-only (`/rules`) con historial de auditoría.
 
 ## Arquitectura por capas
 
@@ -46,16 +53,40 @@ python v0.2/cli.py tui                              # interfaz curses
 
 ## Funcionalidades clave de v0.4
 
+### Seguimiento de guías
+
 - **Auth multi-usuario**: login/logout, cambio de contraseña, perfil editable (`/mi-cuenta`), rate limiting.
 - **Dashboard operativo**: `/`, `/attention`, `/analytics`, `/all-guides`, `/search`, detalles por guía y por cliente.
-- **Reglas editables**: `/rules` con auditoría (`rule_history`) y vista previa contra guías reales (`/rules/preview?guia=...`).
 - **Corridas en background**: `/run/new` dispara un thread con polling de progreso. Auto-sync con Notion al terminar.
-- **Importación Excel**: `/import` con preview + confirm. Crea páginas nuevas en Notion.
+- **Importación Excel**: `/import` con plantilla descargable, vista previa + confirm. Crea páginas nuevas en Notion.
 - **Edición de guías** (Fase 2.2): teléfono, producto, valor, cantidad — atómico Notion → local + audit. Campos vacíos NO borran datos en Notion.
 - **Crear nueva guía** (Fase 2.3): `/guides/new` con formulario.
 - **Archivar / restaurar** (Fase 2.3): soft-delete con papelera de 30 días vía archive de Notion.
 - **Dark mode**, sidebar colapsable, favicon, búsqueda global.
-- **Admin**: `/users` para crear, activar/desactivar y resetear contraseñas.
+
+### Reglas del motor (admin-only)
+
+- **CRUD completo** en `/rules`: lista filtrable, crear, editar, toggle, eliminar, historial de auditoría.
+- Cada cambio queda registrado en `rule_history` con autor.
+- Soporta priorización, matching por estado / novedad / días desde último seguimiento, plantillas de motivo con placeholders.
+
+### Creador de guías (módulo Effi)
+
+- **Catálogo de productos editable** en `/effi/catalog` con aliases para tolerancia a variantes en descripción.
+- **Clasificador determinista**: combo CREMA+GEL, íntimos femeninos (texto manual "N* PRODUCTO FEMENINO VAECOS"), otros (copiar del documento), mixto → escalation.
+- **Validador de direcciones híbrido**: regex con 4 patrones (agencia / urbana cardinal / geográfica+landmark / local interno) + **IA MiniMax M2.7** como segunda opinión cuando regex no está confidente. Few-shot con ejemplos canónicos guatemaltecos.
+- **Bot Playwright headless**: scrape de órdenes, modal de remisión/guía con snapshot+diff para leer IDs nuevos, retry con detección de submit fallido + screenshot/HTML dump en errores.
+- **Idempotencia**: cada orden procesada se registra con PK (no se reprocesa).
+- **Cola humana** en `/effi/queue` para casos no automatizables. Dedupe: una orden ya pendiente no genera nuevo email hasta cambiar de estado.
+- **Audit log granular** en `/effi/audit`.
+- **Trigger manual desde UI** (`/effi/run/manual`) o **cron en VPS** cada hora.
+- **Email digest HTML** mobile-first con resumen consolidado (KPIs + listas por categoría) — solo cuando hay novedades reales.
+
+### Admin
+
+- `/users`: crear, activar/desactivar, resetear contraseñas, asignar rol admin/user.
+- `/effi/catalog`: gestión del catálogo de productos VAECOS para el clasificador.
+- `/rules`: gestión de reglas del motor de tracking.
 
 ## Flujo de datos (post Fase 2.1)
 
@@ -107,6 +138,53 @@ V04_PORT=8765
 # Updates desde GitHub Releases
 V02_UPDATE_REPO=ruben-salas20/vaecos-tracking
 V02_UPDATE_GITHUB_TOKEN=                  # repo privado requiere token con scope repo
+
+# Effi ERP (módulo Creador guías)
+EFFI_USERNAME=
+EFFI_PASSWORD=
+EFFI_SESSION_PATH=v0.2/data/effi-session.json
+EFFI_HEADLESS=true
+EFFI_BASE_URL=https://effi.com.co
+
+# IA validación de direcciones (MiniMax, OpenAI-compat)
+AI_ADDRESS_VALIDATION=auto                # auto = on si hay API key
+MINIMAX_API_KEY=
+MINIMAX_MODEL=MiniMax-M2.7
+MINIMAX_BASE_URL=https://api.minimax.io/v1
+
+# Notificaciones email (opcional)
+NOTIFY_EMAIL=                              # destinatario(s), separados por coma
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_FROM=
+SMTP_USE_SSL=false
+```
+
+## Scripts CLI del módulo Effi
+
+```powershell
+# Generar/renovar sesión Effi (login interactivo, una vez por mes aprox.)
+python scripts/effi_login.py
+
+# Escaneo read-only (no escribe nada en Effi)
+python scripts/effi_dry_run.py --limit 5
+
+# Procesar UNA orden específica
+python scripts/effi_run_one.py --order 5343 --apply
+
+# Procesar todas las pendientes (usado por cron VPS)
+python scripts/effi_run.py --apply --limit 10
+
+# Limpieza de un registro corrupto con IDs reales
+python scripts/effi_mark_done.py --order 5343 --remision 3907 --guia 4015
+
+# Probar configuración SMTP sin esperar evento real
+python scripts/effi_test_email.py
+
+# Diagnóstico de MiniMax
+python scripts/effi_ai_debug.py
 ```
 
 ## Producción — VPS

@@ -4,23 +4,106 @@
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Importar guías</div>
-    <div class="page-sub">Carga un archivo Excel con guías para registrarlas en el sistema.</div>
+    <div class="page-sub">Sube un archivo Excel con las guías a registrar. Verás una vista previa antes de confirmar.</div>
+  </div>
+  <div>
+    <a href="{{ url_for('import_guides.import_template') }}" class="btn primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;vertical-align:middle;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Descargar plantilla Excel
+    </a>
   </div>
 </div>
 
-<div class="panel" style="max-width:500px;">
-  <div class="panel-body">
-    <form method="post" action="{{ url_for('import_guides.import_preview') }}" enctype="multipart/form-data" class="fieldgroup">
-      <div>
-        <label class="field-label" for="excel_file">Archivo Excel (.xlsx o .xls)</label>
-        <input type="file" name="excel_file" id="excel_file" accept=".xlsx,.xls" class="input" required>
-        <div class="field-help">El archivo debe tener una columna de guía en las primeras 3 filas.</div>
-      </div>
-      <div class="row" style="gap:8px;margin-top:4px;">
-        <button type="submit" class="btn primary">Cargar y previsualizar</button>
-        <a href="{{ url_for('dashboard.home') }}" class="btn">Cancelar</a>
-      </div>
-    </form>
+<div class="panel" style="margin-bottom:16px;">
+    <div class="panel-head">
+      <div class="panel-title">Subir archivo</div>
+    </div>
+    <div class="panel-body">
+      <form method="post" action="{{ url_for('import_guides.import_preview') }}" enctype="multipart/form-data" class="fieldgroup">
+        <div>
+          <label class="field-label" for="excel_file">Archivo Excel (.xlsx o .xls)</label>
+          <input type="file" name="excel_file" id="excel_file" accept=".xlsx,.xls" class="input" required>
+          <div class="field-help">El sistema busca los encabezados en las primeras 3 filas — no importa si la fila de títulos no es la primera.</div>
+        </div>
+        <div class="row" style="gap:8px;margin-top:4px;">
+          <button type="submit" class="btn primary">Cargar y previsualizar</button>
+          <a href="{{ url_for('dashboard.home') }}" class="btn">Cancelar</a>
+        </div>
+      </form>
+    </div>
   </div>
-</div>
+
+<div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Columnas reconocidas</div>
+    </div>
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Columna</th>
+            <th>Requerido</th>
+            <th>Ejemplo</th>
+            <th>Alias aceptados</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono"><strong>No. Guía</strong></td>
+            <td><span class="pill danger"><span class="dot"></span>Sí</span></td>
+            <td class="mono">B263437621-1</td>
+            <td class="muted" style="font-size:11px;">tracking, guia, nro guía, guia transportadora</td>
+          </tr>
+          <tr>
+            <td class="mono">Cliente</td>
+            <td><span class="pill neutral"><span class="dot"></span>opcional</span></td>
+            <td>Ana Sofía Martínez</td>
+            <td class="muted" style="font-size:11px;">nombre, destinatario, nombre cliente</td>
+          </tr>
+          <tr>
+            <td class="mono">Transportista</td>
+            <td><span class="pill neutral"><span class="dot"></span>opcional</span></td>
+            <td class="mono">effi</td>
+            <td class="muted" style="font-size:11px;">carrier, empresa <em>(default: effi)</em></td>
+          </tr>
+          <tr>
+            <td class="mono">DPI</td>
+            <td><span class="pill neutral"><span class="dot"></span>opcional</span></td>
+            <td class="mono">12345678</td>
+            <td class="muted" style="font-size:11px;">identificación, cédula, NIT, id destinatario</td>
+          </tr>
+          <tr>
+            <td class="mono">Estado</td>
+            <td><span class="pill neutral"><span class="dot"></span>opcional</span></td>
+            <td>PENDIENTE</td>
+            <td class="muted" style="font-size:11px;">estado guía, estado actual, estado guía inicial</td>
+          </tr>
+          <tr>
+            <td class="mono">Valor</td>
+            <td><span class="pill neutral"><span class="dot"></span>opcional</span></td>
+            <td class="mono">179.00</td>
+            <td class="muted" style="font-size:11px;">monto, total, valor recaudo</td>
+          </tr>
+          <tr>
+            <td class="mono">Contenido</td>
+            <td><span class="pill neutral"><span class="dot"></span>opcional</span></td>
+            <td class="mono">1 * CREMA ESTRECHANTE</td>
+            <td class="muted" style="font-size:11px;">producto, productos, detalle</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="panel-body" style="padding-top:12px;">
+        <div class="field-help" style="margin-top:0;">
+          <strong>Formato del contenido:</strong> usa <code>N * PRODUCTO</code> (ej: <code>2 * CREMA ESTRECHANTE</code>).
+          El sistema separa cantidad y producto automáticamente.
+        </div>
+        <div class="field-help" style="margin-top:6px;">
+          <strong>Guías existentes:</strong> si el número ya está registrado, la fila se marca como <em>omitida</em> y no se duplica.
+        </div>
+        <div class="field-help" style="margin-top:6px;">
+          <strong>Sin encabezado correcto:</strong> el archivo se rechaza con error. Asegurate de tener al menos la columna <code>No. Guía</code> (o alguno de sus alias).
+        </div>
+      </div>
+    </div>
+  </div>
 {% endblock %}

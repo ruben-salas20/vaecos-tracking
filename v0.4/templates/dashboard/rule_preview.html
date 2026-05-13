@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Preview de reglas{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Preview de reglas</div>
+    <div class="page-sub">Simulá una corrida del motor con un escenario específico — no escribe nada. Útil para probar reglas nuevas antes de activarlas.</div>
+  </div>
+  <div>
+    <a href="{{ url_for('dashboard.rules') }}" class="btn">Volver a reglas</a>
+  </div>
+</div>
+
+{% if error %}
+<div class="flash error" style="margin-bottom:12px;">{{ error | e }}</div>
+{% endif %}
+
+{% if autofilled %}
+<div class="flash ok" style="margin-bottom:12px;">
+  Datos cargados desde la última corrida de la guía. Podés modificar cualquier campo antes de evaluar.
+</div>
+{% endif %}
+
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-head"><div class="panel-title">Escenario a simular</div></div>
+  <div class="panel-body">
+    <form method="post" action="{{ url_for('dashboard.rule_preview') }}" class="fieldgroup">
+
+      <div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;">
+        <div>
+          <label class="field-label" for="guia">Auto-completar desde guía existente (opcional)</label>
+          <input class="input mono" type="text" id="guia" name="guia" maxlength="80"
+                 value="{% if form %}{{ form.get('guia','') | e }}{% endif %}"
+                 placeholder="Ej: B263437621-1">
+          <div class="field-help">Se carga la última corrida disponible para esa guía.</div>
+        </div>
+        <div>
+          <button type="submit" name="action" value="autofill" class="btn">Cargar guía</button>
+        </div>
+      </div>
+
+      <hr style="border:0;border-top:1px solid var(--border);margin:8px 0;">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label class="field-label" for="carrier">Carrier</label>
+          <input class="input mono" type="text" id="carrier" name="carrier" maxlength="40"
+                 value="{% if form %}{{ form.get('carrier','effi') | e }}{% else %}effi{% endif %}">
+        </div>
+        <div>
+          <label class="field-label" for="days_since">Días desde último cambio</label>
+          <input class="input mono" type="number" id="days_since" name="days_since" min="0" max="365"
+                 value="{% if form %}{{ form.get('days_since','') | e }}{% endif %}"
+                 placeholder="Ej: 3">
+        </div>
+      </div>
+
+      <div>
+        <label class="field-label" for="estado_effi">Estado en Effi (estado_actual)</label>
+        <input class="input" type="text" id="estado_effi" name="estado_effi" maxlength="120"
+               value="{% if form %}{{ form.get('estado_effi','') | e }}{% endif %}"
+               placeholder="Ej: ALMACENADO EN BODEGA">
+      </div>
+
+      <div>
+        <label class="field-label" for="novelty">Última novedad relevante</label>
+        <input class="input" type="text" id="novelty" name="novelty" maxlength="200"
+               value="{% if form %}{{ form.get('novelty','') | e }}{% endif %}"
+               placeholder="Ej: nadie en casa">
+        <div class="field-help">Vacío si no hay novedad.</div>
+      </div>
+
+      <div>
+        <label class="field-label" for="notion_estado">Estado actual en Notion (opcional)</label>
+        <input class="input" type="text" id="notion_estado" name="notion_estado" maxlength="80"
+               value="{% if form %}{{ form.get('notion_estado','') | e }}{% endif %}"
+               placeholder="Ej: En novedad">
+      </div>
+
+      <div class="row" style="gap:8px;margin-top:8px;">
+        <button type="submit" name="action" value="evaluate" class="btn primary">Evaluar</button>
+        <a href="{{ url_for('dashboard.rule_preview') }}" class="btn">Reiniciar</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if result %}
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-head"><div class="panel-title">Resultado de la evaluación</div></div>
+  <div class="panel-body">
+
+    <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px;margin-bottom:16px;">
+      <div class="kpi">
+        <div class="kpi-label">Regla que ganó</div>
+        <div class="kpi-value" style="font-size:18px;">
+          {% if result.matched_rule_name %}
+            <a href="{{ url_for('dashboard.rule_edit', rule_id=result.matched_rule_id) }}">
+              #{{ result.matched_rule_id }}
+            </a>
+          {% else %}
+            <span class="muted">ninguna</span>
+          {% endif %}
+        </div>
+        <div class="kpi-sub">{{ result.matched_rule_name | e if result.matched_rule_name else 'fallback hardcoded' }}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Estado propuesto</div>
+        <div class="kpi-value" style="font-size:18px;">
+          {% if result.estado_propuesto %}
+            <span class="pill info"><span class="dot"></span>{{ result.estado_propuesto | e }}</span>
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </div>
+        <div class="kpi-sub">{{ rules_evaluated }} reglas activas evaluadas</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Días detectados</div>
+        <div class="kpi-value" style="font-size:18px;">
+          {% if result.days_since_last_status is not none %}
+            {{ result.days_since_last_status }}
+          {% else %}
+            <span class="muted">N/D</span>
+          {% endif %}
+        </div>
+        <div class="kpi-sub">desde último cambio de estado</div>
+      </div>
+    </div>
+
+    <table class="tbl">
+      <tbody>
+        <tr>
+          <th style="width:200px;">Motivo</th>
+          <td>{{ result.motivo | e }}</td>
+        </tr>
+        <tr>
+          <th>Acción para operadora</th>
+          <td>{{ result.requiere_accion | e or '—' }}</td>
+        </tr>
+        <tr>
+          <th>¿Revisión manual?</th>
+          <td>
+            {% if result.review_needed %}
+              <span class="pill warn"><span class="dot"></span>Sí (no auto-apply)</span>
+            {% else %}
+              <span class="pill ok"><span class="dot"></span>No (auto-apply si --apply)</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    {% if not result.matched_rule_id %}
+    <div class="flash" style="margin-top:12px;background:#fff3e0;color:#e65100;border-radius:4px;padding:10px;font-size:13px;">
+      Ninguna regla matchea este escenario. El motor devolvió la decisión de fallback hardcoded.
+      Considera agregar una regla nueva para cubrir este caso.
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

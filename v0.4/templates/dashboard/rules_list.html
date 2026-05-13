@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Reglas{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Reglas del motor</div>
+    <div class="page-sub">Reglas que el motor de tracking aplica para decidir el estado propuesto. Se evalúan por prioridad ascendente — primera coincidencia gana.</div>
+  </div>
+  <div>
+    <a href="{{ url_for('dashboard.rule_new') }}" class="btn primary">Nueva regla</a>
+  </div>
+</div>
+
+<div class="kpi-grid" style="margin-bottom:16px;">
+  <div class="kpi">
+    <div class="kpi-label">Total reglas mostradas</div>
+    <div class="kpi-value">{{ total }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Activas</div>
+    <div class="kpi-value">{{ enabled_count }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Desactivadas</div>
+    <div class="kpi-value">{{ disabled_count }}</div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-body">
+    <form method="get" action="{{ url_for('dashboard.rules') }}" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
+      <div>
+        <label class="field-label" for="carrier">Carrier</label>
+        <input class="input mono" type="text" id="carrier" name="carrier" value="{{ carrier_filter | e }}" placeholder="effi (vacío = todos)" style="width:180px;">
+      </div>
+      <div>
+        <label class="field-label">
+          <input type="checkbox" name="show_disabled" value="1" {% if show_disabled %}checked{% endif %}>
+          Mostrar desactivadas
+        </label>
+      </div>
+      <button type="submit" class="btn">Filtrar</button>
+      {% if carrier_filter or show_disabled %}
+      <a href="{{ url_for('dashboard.rules') }}" class="btn">Limpiar</a>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-body flush">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th style="width:60px;">Prio.</th>
+          <th>Nombre</th>
+          <th>Carrier</th>
+          <th>Condición</th>
+          <th>→ Propuesta</th>
+          <th>Acción operadora</th>
+          <th>Estado</th>
+          <th style="min-width:240px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rules %}
+        <tr>
+          <td class="mono">{{ r.priority }}</td>
+          <td>
+            <strong>{{ r.name | e }}</strong>
+            {% if r.notes %}<div class="muted" style="font-size:11px;margin-top:2px;">{{ r.notes | e }}</div>{% endif %}
+          </td>
+          <td><span class="pill neutral"><span class="dot"></span>{{ r.carrier | e }}</span></td>
+          <td style="font-size:12px;">
+            {% if r.estado_match_kind == 'any' %}<span class="muted">cualquier estado</span>{% else %}
+              <strong>estado</strong> {{ r.estado_match_kind | replace('_', ' ') }}: <span class="mono">{{ r.estado_match_values | join(', ') | e | truncate(60) }}</span>
+            {% endif %}
+            {% if r.novelty_match_kind != 'any' %}
+              <br><strong>novedad</strong>: <span class="mono">{{ r.novelty_match_values | join(', ') | e | truncate(60) }}</span>
+            {% endif %}
+            {% if r.days_comparator %}
+              <br><strong>días</strong> {{ r.days_comparator }} {% if r.days_threshold is not none %}{{ r.days_threshold }}{% endif %}
+            {% endif %}
+          </td>
+          <td>
+            {% if r.estado_propuesto %}<span class="pill info"><span class="dot"></span>{{ r.estado_propuesto | e }}</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+            {% if r.review_needed %}<div style="margin-top:2px;"><span class="pill warn" style="font-size:10px;"><span class="dot"></span>review</span></div>{% endif %}
+          </td>
+          <td style="font-size:12px;">{{ r.requiere_accion | e or '—' }}</td>
+          <td>
+            {% if r.enabled %}<span class="pill ok"><span class="dot"></span>activa</span>
+            {% else %}<span class="pill danger"><span class="dot"></span>inactiva</span>{% endif %}
+          </td>
+          <td>
+            <div class="row-actions">
+              <a href="{{ url_for('dashboard.rule_edit', rule_id=r.id) }}" class="btn btn-sm">Editar</a>
+              <form method="post" action="{{ url_for('dashboard.rule_toggle', rule_id=r.id) }}">
+                <button type="submit" class="btn btn-sm {% if r.enabled %}danger{% endif %}">
+                  {{ 'Desactivar' if r.enabled else 'Activar' }}
+                </button>
+              </form>
+              <a href="{{ url_for('dashboard.rule_history', rule_id=r.id) }}" class="btn btn-sm">Historial</a>
+              <form method="post" action="{{ url_for('dashboard.rule_delete', rule_id=r.id) }}"
+                    onsubmit="return confirm('¿Eliminar la regla {{ r.name | e }}? Esta acción no se puede deshacer.')">
+                <button type="submit" class="btn btn-sm danger">Eliminar</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px;">No hay reglas que coincidan con el filtro.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

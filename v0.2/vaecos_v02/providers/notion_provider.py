@@ -384,15 +384,22 @@ class NotionProvider:
         ]
 
     def _parse_record(self, page: dict[str, Any]) -> NotionClientRecord | None:
+        """Solo se requieren page_id + nombre + guia para identificar una guía.
+
+        `estado_novedad` puede venir vacío para guías recién creadas en Notion
+        que aún no fueron clasificadas — siguen siendo válidas y se sincronizan
+        a local con `estado_novedad = ""`. El motor de tracking las ignora (no
+        hay estado que evaluar) pero APARECEN en /all-guides como debe ser.
+        """
         properties = page.get("properties", {})
         if not isinstance(properties, dict):
             return None
         page_id = page.get("id", "")
         nombre = self._read_title(properties.get("Nombre"))
         guia = self._read_rich_text(properties.get("No. Guía"))
-        estado_novedad = self._read_select(properties.get("Estado novedad"))
-        if not page_id or not nombre or not guia or not estado_novedad:
+        if not page_id or not nombre or not guia:
             return None
+        estado_novedad = self._read_select(properties.get("Estado novedad"))
         carrier_raw = self._read_select(properties.get("Transportista")) or "effi"
         carrier = carrier_raw.strip().lower() or "effi"
         fecha_str = self._read_date(properties.get("Fecha \u00faltimo seguimiento"))

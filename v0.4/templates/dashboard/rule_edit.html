@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}{% if rule %}Editar regla #{{ rule.id }}{% else %}Nueva regla{% endif %}{% endblock %}
+{% block content %}
+{% macro fv(field, default='') -%}
+{%- if form and form.get(field) is not none -%}{{ form.get(field) }}{%- elif rule -%}{{ rule[field] if rule[field] is not none else default }}{%- else -%}{{ default }}{%- endif -%}
+{%- endmacro %}
+
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">{% if rule %}Editar regla #{{ rule.id }}{% else %}Nueva regla{% endif %}</div>
+    <div class="page-sub">
+      {% if rule %}
+        Última edición: {{ rule.updated_at | fmt_ts }} por {{ rule.updated_by | e }}
+      {% else %}
+        Crear una nueva regla del motor de tracking.
+      {% endif %}
+    </div>
+  </div>
+  <div>
+    <a href="{{ url_for('dashboard.rules') }}" class="btn">Volver a reglas</a>
+  </div>
+</div>
+
+{% if error %}
+<div class="flash error" style="margin-bottom:12px;">{{ error | e }}</div>
+{% endif %}
+
+<form method="post" class="fieldgroup" style="max-width:760px;">
+
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-head"><div class="panel-title">Identificación</div></div>
+  <div class="panel-body">
+    <div>
+      <label class="field-label" for="name">Nombre *</label>
+      <input class="input" type="text" id="name" name="name" required maxlength="120"
+             value="{% if form %}{{ form.get('name','') | e }}{% elif rule %}{{ rule.name | e }}{% endif %}">
+      <div class="field-help">Identificador legible. Ej: "Anomalía – nadie en casa".</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div>
+        <label class="field-label" for="priority">Prioridad *</label>
+        <input class="input mono" type="number" id="priority" name="priority" required min="1" max="9999"
+               value="{% if form %}{{ form.get('priority','100') }}{% elif rule %}{{ rule.priority }}{% else %}100{% endif %}">
+        <div class="field-help">Las reglas se evalúan ascendente — la primera que coincida gana. Default: 100.</div>
+      </div>
+      <div>
+        <label class="field-label" for="carrier">Carrier</label>
+        <input class="input mono" type="text" id="carrier" name="carrier" maxlength="40"
+               value="{% if form %}{{ form.get('carrier','effi') | e }}{% elif rule %}{{ rule.carrier | e }}{% else %}effi{% endif %}">
+        <div class="field-help"><code>effi</code> para Effi, <code>*</code> para todos.</div>
+      </div>
+    </div>
+    <div>
+      <label class="field-label">
+        <input type="checkbox" name="enabled" value="1"
+               {% if form %}{% if form.get('enabled') == '1' %}checked{% endif %}{% elif rule %}{% if rule.enabled %}checked{% endif %}{% else %}checked{% endif %}>
+        Regla activa
+      </label>
+    </div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-head"><div class="panel-title">Condiciones</div></div>
+  <div class="panel-body">
+
+    <div>
+      <label class="field-label" for="estado_match_kind">Coincidencia de estado</label>
+      <select class="input" id="estado_match_kind" name="estado_match_kind">
+        {% set cur_kind = form.get('estado_match_kind') if form else (rule.estado_match_kind if rule else 'any') %}
+        <option value="any" {% if cur_kind == 'any' %}selected{% endif %}>any — cualquier estado</option>
+        <option value="equals_one_of" {% if cur_kind == 'equals_one_of' %}selected{% endif %}>equals_one_of — coincide exacto con alguno</option>
+        <option value="contains_any_of" {% if cur_kind == 'contains_any_of' %}selected{% endif %}>contains_any_of — el estado contiene como substring</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label" for="estado_match_values">Valores de estado (uno por línea)</label>
+      <textarea class="input mono" id="estado_match_values" name="estado_match_values" rows="3"
+                placeholder="Ej:&#10;anomalia&#10;ruta entrega final">{% if form %}{{ form.get('estado_match_values','') | e }}{% elif rule %}{{ rule.estado_match_values | join('\n') | e }}{% endif %}</textarea>
+      <div class="field-help">Valores normalizados (lowercase, sin tildes) que el estado debe matchear.</div>
+    </div>
+
+    <div>
+      <label class="field-label" for="novelty_match_kind">Coincidencia de novedad</label>
+      <select class="input" id="novelty_match_kind" name="novelty_match_kind">
+        {% set cur_n = form.get('novelty_match_kind') if form else (rule.novelty_match_kind if rule else 'any') %}
+        <option value="any" {% if cur_n == 'any' %}selected{% endif %}>any — sin condición de novedad</option>
+        <option value="contains_any_of" {% if cur_n == 'contains_any_of' %}selected{% endif %}>contains_any_of — la novedad contiene como substring</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label" for="novelty_match_values">Valores de novedad (uno por línea)</label>
+      <textarea class="input mono" id="novelty_match_values" name="novelty_match_values" rows="4"
+                placeholder="Ej:&#10;nadie en casa&#10;cliente no quiso recibir">{% if form %}{{ form.get('novelty_match_values','') | e }}{% elif rule %}{{ rule.novelty_match_values | join('\n') | e }}{% endif %}</textarea>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div>
+        <label class="field-label" for="days_comparator">Comparador de días</label>
+        <select class="input" id="days_comparator" name="days_comparator">
+          {% set cur_c = form.get('days_comparator') if form else (rule.days_comparator if rule else '') %}
+          <option value="" {% if not cur_c %}selected{% endif %}>(no se evalúa por días)</option>
+          <option value="gt" {% if cur_c == 'gt' %}selected{% endif %}>gt — mayor que</option>
+          <option value="gte" {% if cur_c == 'gte' %}selected{% endif %}>gte — mayor o igual a</option>
+          <option value="lt" {% if cur_c == 'lt' %}selected{% endif %}>lt — menor que</option>
+          <option value="lte" {% if cur_c == 'lte' %}selected{% endif %}>lte — menor o igual a</option>
+          <option value="no_date" {% if cur_c == 'no_date' %}selected{% endif %}>no_date — sin fecha de tracking</option>
+        </select>
+      </div>
+      <div>
+        <label class="field-label" for="days_threshold">Umbral (días)</label>
+        <input class="input mono" type="number" id="days_threshold" name="days_threshold" min="0" max="365"
+               value="{% if form %}{{ form.get('days_threshold','') | e }}{% elif rule and rule.days_threshold is not none %}{{ rule.days_threshold }}{% endif %}">
+        <div class="field-help">Obligatorio si comparador es gt/gte/lt/lte.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-head"><div class="panel-title">Resultado cuando matchea</div></div>
+  <div class="panel-body">
+    <div>
+      <label class="field-label" for="estado_propuesto">Estado propuesto</label>
+      <input class="input" type="text" id="estado_propuesto" name="estado_propuesto" maxlength="80"
+             value="{% if form %}{{ form.get('estado_propuesto','') | e }}{% elif rule and rule.estado_propuesto %}{{ rule.estado_propuesto | e }}{% endif %}">
+      <div class="field-help">Estado que el motor propone para Notion. Dejar vacío si la regla no propone cambio.</div>
+    </div>
+    <div>
+      <label class="field-label" for="motivo_template">Plantilla de motivo *</label>
+      <textarea class="input" id="motivo_template" name="motivo_template" rows="2" required maxlength="500"
+                placeholder="Ej: ALMACENADO EN BODEGA con {days} dias sin cambio.">{% if form %}{{ form.get('motivo_template','') | e }}{% elif rule %}{{ rule.motivo_template | e }}{% endif %}</textarea>
+      <div class="field-help">Texto que se guarda como motivo. Variables disponibles: <code>{days}</code>, <code>{estado_actual}</code>, <code>{estado_upper}</code>, <code>{matched_novelty}</code>.</div>
+    </div>
+    <div>
+      <label class="field-label" for="requiere_accion">Acción que requiere de la operadora</label>
+      <input class="input" type="text" id="requiere_accion" name="requiere_accion" maxlength="120"
+             value="{% if form %}{{ form.get('requiere_accion','') | e }}{% elif rule %}{{ rule.requiere_accion | e }}{% endif %}">
+      <div class="field-help">Ej: "Hablar con cliente", "Sin accion", "Gestionar con encargado".</div>
+    </div>
+    <div>
+      <label class="field-label">
+        <input type="checkbox" name="review_needed" value="1"
+               {% if form %}{% if form.get('review_needed') == '1' %}checked{% endif %}{% elif rule %}{% if rule.review_needed %}checked{% endif %}{% endif %}>
+        Marcar como revisión manual (no auto-apply en --apply)
+      </label>
+    </div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-head"><div class="panel-title">Notas</div></div>
+  <div class="panel-body">
+    <div>
+      <label class="field-label" for="notes">Notas internas</label>
+      <textarea class="input" id="notes" name="notes" rows="2" maxlength="500">{% if form %}{{ form.get('notes','') | e }}{% elif rule %}{{ rule.notes | e }}{% endif %}</textarea>
+    </div>
+  </div>
+</div>
+
+<div class="row" style="gap:8px;">
+  <button type="submit" class="btn primary">{% if rule %}Guardar cambios{% else %}Crear regla{% endif %}</button>
+  <a href="{{ url_for('dashboard.rules') }}" class="btn">Cancelar</a>
+</div>
+
+</form>
+{% endblock %}

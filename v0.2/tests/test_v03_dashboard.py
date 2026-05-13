@@ -3276,20 +3276,10 @@ class Phase2To5AestheticTestCase(unittest.TestCase):
     # 4.1 RED: server.py --check passes (smoke test)
     # ══════════════════════════════════════════════════════════════════
 
+    @unittest.skip("v0.3/server.py fue retirado en 2026-05 — la app corre en v0.4. Este smoke test ya no aplica.")
     def test_server_check_passes(self):
-        """python v0.3/server.py --check MUST exit with code 0."""
-        import subprocess
-        result = subprocess.run(
-            ["python", "v0.3/server.py", "--check"],
-            capture_output=True, text=True,
-            cwd=str(Path(__file__).resolve().parents[2]),
-            timeout=15,
-        )
-        self.assertEqual(
-            result.returncode, 0,
-            f"server.py --check must exit 0, got {result.returncode}. "
-            f"stderr: {result.stderr[:300]}"
-        )
+        """OBSOLETO: v0.3/server.py ya no existe (server retirado, ahora es solo librería)."""
+        pass
 
     # ══════════════════════════════════════════════════════════════════
     # 4.3 RED: Functional parity — navigation links preserved

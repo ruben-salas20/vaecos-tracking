@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Historial · regla #{{ rule.id }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Historial · {{ rule.name | e }}</div>
+    <div class="page-sub">Cambios registrados sobre esta regla.</div>
+  </div>
+  <div>
+    <a href="{{ url_for('dashboard.rule_edit', rule_id=rule.id) }}" class="btn">Volver a editar</a>
+    <a href="{{ url_for('dashboard.rules') }}" class="btn">Lista de reglas</a>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-body flush">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Acción</th>
+          <th>Por</th>
+          <th>Antes</th>
+          <th>Después</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in history %}
+        <tr>
+          <td>{{ h['changed_at'] | fmt_ts }}</td>
+          <td>
+            {% set action = h['action'] %}
+            {% if action == 'create' %}<span class="pill ok"><span class="dot"></span>creada</span>
+            {% elif action == 'update' %}<span class="pill info"><span class="dot"></span>actualizada</span>
+            {% elif action == 'enable' %}<span class="pill ok"><span class="dot"></span>activada</span>
+            {% elif action == 'disable' %}<span class="pill danger"><span class="dot"></span>desactivada</span>
+            {% elif action == 'delete' %}<span class="pill danger"><span class="dot"></span>eliminada</span>
+            {% elif action == 'seed' %}<span class="pill neutral"><span class="dot"></span>seed</span>
+            {% else %}<span class="pill neutral"><span class="dot"></span>{{ action | e }}</span>
+            {% endif %}
+          </td>
+          <td>{{ h['changed_by'] | e }}</td>
+          <td class="mono" style="font-size:11px;max-width:280px;color:var(--muted);">{{ (h['before_json'] or '—') | truncate(180) }}</td>
+          <td class="mono" style="font-size:11px;max-width:280px;color:var(--muted);">{{ (h['after_json'] or '—') | truncate(180) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px;">Sin historial registrado.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

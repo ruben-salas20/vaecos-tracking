@@ -1,76 +1,33 @@
-# VAECOS v0.3
+# VAECOS v0.3 — LEGACY (solo como librería)
 
-`v0.3` es la siguiente fase del proyecto: una aplicacion web local construida sobre la SQLite que mantiene `v0.2`.
+> **Estado**: el **server v0.3 fue retirado** (mayo 2026). v0.4 lo reemplaza completamente como interfaz principal.
+>
+> Este directorio queda únicamente como **librería** para que v0.4 reutilice tres componentes ya probados:
+>
+> - `vaecos_v03/storage.py` — `DashboardRepository`: queries de dashboard, búsqueda, attention, analytics, notas, edits.
+> - `vaecos_v03/render.py` — generadores SVG (`line_chart`, `stacked_bar_chart`). Migrados verbatim a `v0.4/app/charts.py`; este sigue para retro-compat de tests.
+> - `vaecos_v03/__init__.py` — paquete vacío.
+>
+> Los demás módulos (`app.py`, `config.py`, `rules_ui.py`) ya **no se ejecutan en producción**. Quedan por mantener los tests históricos del DashboardRepository (`v0.2/tests/test_v03_dashboard.py`, ~150 casos validados).
 
-## Objetivo
+## Qué hacía v0.3 (histórico)
 
-- visualizar corridas sin leer archivos manualmente
-- navegar resultados por corrida
-- revisar historial por guia
-- ejecutar corridas desde una interfaz web
-- aprovechar SQLite como fuente operativa secundaria
+Aplicación web local sobre `http.server` (stdlib). Cubría:
+- Dashboard operativo
+- Navegación por corridas/guía/cliente
+- Disparo de corridas desde la web
+- Edición de reglas con auditoría
 
-## Requisitos
+Todo eso ahora vive en `v0.4/app/` con Flask, autenticación, dark mode, deploy en VPS, y los módulos adicionales (Effi automation, etc.).
 
-- Python 3.12+
-- una base SQLite existente de `v0.2`
+## ¿Cómo arranco la app?
 
-No requiere instalar paquetes externos.
-
-## Variables de entorno
-
-`v0.3` usa por defecto la base de `v0.2`:
-
-```env
-V03_SQLITE_DB_PATH=v0.2/data/vaecos_tracking.db
-V03_HOST=127.0.0.1
-V03_PORT=8765
-```
-
-Si `V03_SQLITE_DB_PATH` no existe, intenta `V02_SQLITE_DB_PATH` y luego `v0.2/data/vaecos_tracking.db`.
-
-## Uso
-
-Levantar dashboard:
+NO uses este directorio. La aplicación es ahora:
 
 ```powershell
-python v0.3/server.py
+iniciar_v04.bat
+# o
+python v0.4/server.py
 ```
 
-Puerto o host personalizados:
-
-```powershell
-python v0.3/server.py --host 0.0.0.0 --port 9000
-```
-
-Verificacion rapida sin levantar servidor:
-
-```powershell
-python v0.3/server.py --check
-```
-
-## Vistas disponibles
-
-- `/` resumen de la ultima corrida
-- `/runs` listado de corridas
-- `/run/new` formulario para ejecutar corridas desde web
-- `/runs/<id>` detalle de una corrida
-- `/guides/<guia>` historial de una guia
-
-## Relacion con v0.2
-
-- `v0.2` sigue siendo quien ejecuta corridas y escribe a SQLite
-- `v0.3` usa la logica de `v0.2` para ejecutar corridas desde web y luego presenta resultados leyendo SQLite
-
-## Primer arranque
-
-`v0.3` ya no requiere que la SQLite exista previamente.
-
-En el primer arranque:
-
-- crea automaticamente la carpeta `v0.2/data/` si no existe
-- crea la base `vaecos_tracking.db` si no existe
-- inicializa el esquema SQLite
-- siembra las reglas default
-
-Por eso `iniciar.bat` y `python v0.3/server.py` deben funcionar incluso en una instalacion nueva.
+URL local: `http://127.0.0.1:8765` · Producción: `https://app.vaecos.com`.
