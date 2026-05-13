@@ -1,11 +1,11 @@
 from __future__ import annotations
-import csv
 import io
 import sys
+from datetime import datetime
 from pathlib import Path
 from flask import (
     Blueprint, render_template, request, session,
-    redirect, url_for, flash, current_app, make_response, jsonify
+    redirect, url_for, flash, current_app, make_response, jsonify, send_file
 )
 from ..auth.decorators import login_required
 from ..utils import sanitize_csv_field
@@ -56,25 +56,82 @@ def run_progress(token: str):
 @runs_bp.route("/runs/<int:run_id>/export/effi")
 @login_required
 def export_effi(run_id: int):
+    """Exporta a Excel las guías de la corrida que requieren 'Gestionar con encargado'.
+
+    Formato organizado: header negro con marca, columnas con ancho ajustado,
+    info de la corrida en una fila de metadatos arriba del data.
+    """
+    import openpyxl
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
     repo = _repo()
+    run = repo.get_run(run_id)
     rows = repo.export_effi_rows(run_id)
-    buf = io.StringIO(newline="")
-    writer = csv.writer(buf)
-    writer.writerow(["No. Guía", "Estado actual (Effi)", "Problema", "Notas operadora"])
-    for row in rows:
-        problema = sanitize_csv_field(row["motivo"] or "")
-        writer.writerow([
-            row["guia"] or "",
-            row["estado_effi_actual"] or "",
-            problema,
-            row["notas_operador"] or "",
-        ])
-    encoded = ("﻿" + buf.getvalue()).encode("utf-8")
-    response = make_response(encoded)
-    response.headers["Content-Type"] = "text/csv; charset=utf-8"
-    response.headers["Content-Length"] = str(len(encoded))
-    response.headers["Content-Disposition"] = f'attachment; filename="run_{run_id}_effi_export.csv"'
-    return response
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = f"Corrida {run_id}"
+
+    # ── Bloque de metadatos (fila 1) ─────────────────────────────────
+    meta_parts = [f"VAECOS · Corrida #{run_id}"]
+    if run:
+        started = run["started_at"] if run["started_at"] else ""
+        mode = run["mode"] if run["mode"] else ""
+        if started:
+            meta_parts.append(f"Iniciada: {started[:19].replace('T', ' ')}")
+        if mode:
+            meta_parts.append(f"Modo: {mode}")
+    meta_parts.append(f"Filas: {len(rows)}")
+    meta_parts.append(f"Exportada: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    meta_cell = ws.cell(row=1, column=1, value=" · ".join(meta_parts))
+    meta_cell.font = Font(italic=True, color="666666", size=10)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+
+    # ── Headers (fila 3, dejando 1 fila vacía de aire) ──────────────
+    headers = ["No. Guía", "Estado actual (Effi)", "Problema", "Notas operadora"]
+    header_row = 3
+    for col_idx, h in enumerate(headers, start=1):
+        c = ws.cell(row=header_row, column=col_idx, value=h)
+        c.font = Font(bold=True, color="FFFFFF", size=11)
+        c.fill = PatternFill(start_color="1A1A1A", end_color="1A1A1A", fill_type="solid")
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[header_row].height = 26
+
+    # ── Datos (fila 4 en adelante) ──────────────────────────────────
+    for i, row in enumerate(rows, start=header_row + 1):
+        ws.cell(row=i, column=1, value=row["guia"] or "")
+        ws.cell(row=i, column=2, value=row["estado_effi_actual"] or "")
+        ws.cell(row=i, column=3, value=sanitize_csv_field(row["motivo"] or ""))
+        ws.cell(row=i, column=4, value=row["notas_operador"] or "")
+        # Alineación + wrap para "Problema" y "Notas" (textos largos)
+        ws.cell(row=i, column=3).alignment = Alignment(vertical="top", wrap_text=True)
+        ws.cell(row=i, column=4).alignment = Alignment(vertical="top", wrap_text=True)
+
+    # ── Anchos de columna ──────────────────────────────────────────
+    widths = [16, 28, 52, 36]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    # ── Freeze pane: el header siempre visible al hacer scroll ─────
+    ws.freeze_panes = ws.cell(row=header_row + 1, column=1)
+
+    # ── AutoFilter sobre el bloque de datos (Excel filter dropdowns)
+    if rows:
+        ws.auto_filter.ref = f"A{header_row}:D{header_row + len(rows)}"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    wb.close()
+    buf.seek(0)
+
+    fecha = datetime.now().strftime("%Y-%m-%d")
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"vaecos-corrida-{run_id}-effi-{fecha}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @runs_bp.route("/sync/notion", methods=["POST"])

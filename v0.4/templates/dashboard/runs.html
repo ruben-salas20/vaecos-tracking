@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "macros.html" import mode_badge %}
+{% from "partials/_pagination.html" import pagination_nav %}
 {% block title %}Corridas{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -55,6 +56,7 @@
         {% endfor %}
       </tbody>
     </table>
+    {% if pagination %}{{ pagination_nav(pagination, request) }}{% endif %}
   </div>
 </div>
 {% endblock %}

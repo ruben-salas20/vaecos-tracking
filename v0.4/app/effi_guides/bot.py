@@ -380,55 +380,58 @@ class EffiBot:
         self._click_submit_button(modal, "Crear y cerrar")
 
         # 3) Verificar que el submit REALMENTE tomó efecto.
-        self._verify_modal_submit_succeeded(modal, orden_id, "convert_to_remision")
+        self._post_submit_wait(modal, orden_id, "convert_to_remision")
 
         return self._read_new_id(self.settings.remision_v_url, pre_existing, "remision")
 
-    def _verify_modal_submit_succeeded(self, modal, context_id: int, label: str) -> None:
-        """Tras clickear 'Crear y cerrar', verificar que el modal se cerró Y no hay error.
+    def _post_submit_wait(self, modal, context_id: int, label: str) -> None:
+        """Espera best-effort tras click "Crear y cerrar".
 
-        Si el modal sigue visible tras 10s O aparece un mensaje de error inline,
-        dumpea HTML+screenshot y raise — el submit no llegó a Effi.
+        Si el modal se cierra rápido, retorna inmediatamente.
+        Si no se cierra en 5s, registra warning + dumpea (para diagnóstico)
+        pero NO falla — el juez REAL de éxito es _read_new_id, que verifica
+        en la tabla destino si apareció un ID nuevo. Effi a veces deja el modal
+        visible aunque la operación interna haya succeded (caso confirmado en
+        producción 2026-05-13: orden 5378 → guía creada pero modal lingering).
         """
-        time.sleep(2.0)
+        time.sleep(1.5)
         try:
-            modal.wait_for(state="hidden", timeout=10000)
-            # Modal se ocultó — submit casi seguro aceptado.
-            return
+            modal.wait_for(state="hidden", timeout=5000)
+            return  # modal se cerró rápido → confianza alta de éxito
         except PlaywrightTimeoutError:
             pass
 
-        # Modal sigue visible. Inspeccionar contenido para diagnóstico.
-        diagnostic = modal.evaluate(
-            """
-            m => {
-                const errorSelectors = [
-                    '.alert-danger', '.alert-error', '.text-danger', '.error',
-                    '.invalid-feedback', '[role="alert"]', '.is-invalid'
-                ];
-                const errors = [];
-                for (const sel of errorSelectors) {
-                    m.querySelectorAll(sel).forEach(el => {
-                        const t = (el.innerText || '').trim();
-                        if (t && t.length < 500) errors.push(t);
-                    });
+        # Modal lingering — diagnóstico sin abortar.
+        try:
+            diagnostic = modal.evaluate(
+                """
+                m => {
+                    const errors = [];
+                    for (const sel of ['.alert-danger', '.alert-error', '.text-danger',
+                                       '.error', '.invalid-feedback', '[role="alert"]', '.is-invalid']) {
+                        m.querySelectorAll(sel).forEach(el => {
+                            const t = (el.innerText || '').trim();
+                            if (t && t.length < 500) errors.push(t);
+                        });
+                    }
+                    return { errors: errors.slice(0, 3) };
                 }
-                return {
-                    visible: !m.hidden && getComputedStyle(m).display !== 'none',
-                    errors: errors.slice(0, 5),
-                    snippet: (m.innerText || '').slice(0, 500),
-                };
-            }
-            """
+                """
+            )
+            errors = diagnostic.get("errors") or []
+        except Exception:
+            errors = []
+
+        print(
+            f"  [info] {label}: modal lingering tras submit "
+            f"(errores visibles: {errors or 'ninguno'}) — "
+            "validando éxito via tabla destino..."
         )
-        self._dump_modal_html(modal, f"{label}_failed_{context_id}")
-        self._dump_modal_screenshot(context_id)
-        raise EffiBotError(
-            f"{label}: el modal de orden {context_id} NO se cerró tras 10s — el submit no llegó a Effi. "
-            f"Errores detectados: {diagnostic.get('errors') or 'ninguno visible'}. "
-            f"Snippet del modal: {(diagnostic.get('snippet') or '')[:200]!r}. "
-            "HTML+screenshot guardados en v0.2/data/debug/ para inspección."
-        )
+        # Dump opcional para análisis futuro, sin abortar.
+        try:
+            self._dump_modal_html(modal, f"{label}_modal_lingered_{context_id}")
+        except Exception:
+            pass
 
     # IDs de Effi están en los miles. Cualquier número > 10M es ruido (típicamente
     # fechas que el regex `\D` consolida en 14 dígitos como 20260513115123).
@@ -549,7 +552,7 @@ class EffiBot:
 
         # 4) Submit, verificar éxito, y leer ID nuevo.
         self._click_submit_button(modal, "Crear y cerrar")
-        self._verify_modal_submit_succeeded(modal, remision_id, "create_guia")
+        self._post_submit_wait(modal, remision_id, "create_guia")
 
         return self._read_new_id(self.settings.guia_transporte_url, pre_existing, "guia")
 

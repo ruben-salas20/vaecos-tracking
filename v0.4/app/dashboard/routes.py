@@ -164,26 +164,37 @@ def por_recoger():
 @dashboard_bp.route("/runs")
 @login_required
 def runs():
+    from ..pagination import Pagination, read_pagination_args
     repo = _repo()
     mode_filter = (request.args.get("mode") or "").strip()
-    rows = repo.list_runs(limit=100)
+    page, per_page = read_pagination_args(default_per_page=50)
+    # mode_filter es solo client-side. Para paginación correcta cuando hay filtro,
+    # mejor: traer todo y filtrar. Volumen pequeño (decenas/cientos de corridas).
+    total = repo.count_runs()
+    pag = Pagination.build(page=page, per_page=per_page, total=total)
+    rows = repo.list_runs(limit=pag.per_page, offset=pag.offset)
     if mode_filter:
         rows = [row for row in rows if str(row["mode"]) == mode_filter]
-    return render_template("dashboard/runs.html", rows=rows, mode_filter=mode_filter)
+    return render_template("dashboard/runs.html", rows=rows, mode_filter=mode_filter, pagination=pag)
 
 
 @dashboard_bp.route("/runs/<int:run_id>")
 @login_required
 def run_detail(run_id: int):
+    from ..pagination import Pagination, read_pagination_args
     repo = _repo()
     run = repo.get_run(run_id)
     if run is None:
-        return render_template("dashboard/run_detail.html", run=None, run_id=run_id, rows=[], resultado_filter="", duration_text="")
+        return render_template("dashboard/run_detail.html", run=None, run_id=run_id, rows=[], resultado_filter="", duration_text="", pagination=None)
 
     resultado_filter = (request.args.get("resultado") or "").strip()
-    rows = repo.get_run_results(run_id)
-    if resultado_filter:
-        rows = [row for row in rows if str(row["resultado"]) == resultado_filter]
+    page, per_page = read_pagination_args(default_per_page=100)
+    total = repo.count_run_results(run_id, resultado_filter=resultado_filter)
+    pag = Pagination.build(page=page, per_page=per_page, total=total)
+    rows = repo.get_run_results(
+        run_id, resultado_filter=resultado_filter,
+        limit=pag.per_page, offset=pag.offset,
+    )
     duration = repo.run_duration_seconds(run_id)
     duration_text = fmt_duration_seconds(duration) if duration else ""
     created = bool(request.args.get("created"))
@@ -197,6 +208,7 @@ def run_detail(run_id: int):
         duration_text=duration_text,
         created=created,
         format_date_short=format_date_short,
+        pagination=pag,
     )
 
 
@@ -512,14 +524,18 @@ def delete_note(guia: str, note_id: int):
 @dashboard_bp.route("/clients/<path:cliente>")
 @login_required
 def client_detail(cliente: str):
+    from ..pagination import Pagination, read_pagination_args
     repo = _repo()
     try:
         days = max(7, min(int(request.args.get("days") or "90"), 365))
     except ValueError:
         days = 90
 
+    page, per_page = read_pagination_args(default_per_page=50)
     summary = repo.client_summary(cliente, days=days)
-    rows = repo.client_history(cliente, days=days)
+    total = repo.count_client_history(cliente, days=days)
+    pag = Pagination.build(page=page, per_page=per_page, total=total)
+    rows = repo.client_history(cliente, days=days, limit=pag.per_page, offset=pag.offset)
     telefono = repo.latest_phone_for_client(cliente)
     return render_template(
         "dashboard/client_detail.html",
@@ -528,6 +544,7 @@ def client_detail(cliente: str):
         summary=summary,
         rows=rows,
         telefono=telefono,
+        pagination=pag,
     )
 
 
@@ -537,39 +554,57 @@ _GUIDE_RE = re.compile(r"^[Bb]\d+(?:-\d+)?$")
 @dashboard_bp.route("/search")
 @login_required
 def search():
+    from ..pagination import Pagination, read_pagination_args
+
     q = (request.args.get("q") or "").strip()
     if not q:
         return render_template("dashboard/search.html", q="", clients=None,
-                               phone_results=None, kind=None)
+                               phone_results=None, kind=None, pagination=None)
 
     # Smart routing
     if _GUIDE_RE.match(q):
         return redirect(url_for("dashboard.guide_detail", guia=q.upper()))
 
     repo = _repo()
+    page, per_page = read_pagination_args(default_per_page=50)
     digits = "".join(c for c in q if c.isdigit())
     if digits and len(digits) >= 6 and not any(c.isalpha() for c in q):
         # Looks like a DPI/phone number — search by phone
-        rows = repo.search_by_phone(digits)
+        total = repo.count_search_by_phone(digits)
+        pag = Pagination.build(page=page, per_page=per_page, total=total)
+        rows = repo.search_by_phone(digits, limit=pag.per_page, offset=pag.offset)
         return render_template("dashboard/search.html", q=q, kind="phone",
-                               telefono=digits, phone_results=rows, clients=None)
+                               telefono=digits, phone_results=rows, clients=None,
+                               pagination=pag)
 
     # Otherwise, search by client name
-    clients = repo.search_clients_by_name(q, limit=50)
+    total = repo.count_search_clients_by_name(q)
+    pag = Pagination.build(page=page, per_page=per_page, total=total)
+    clients = repo.search_clients_by_name(q, limit=pag.per_page, offset=pag.offset)
     return render_template("dashboard/search.html", q=q, kind="name",
-                           clients=clients, phone_results=None)
+                           clients=clients, phone_results=None, pagination=pag)
 
 
 @dashboard_bp.route("/all-guides")
 @login_required
 def all_guides():
+    from ..pagination import Pagination, read_pagination_args
+
     repo = _repo()
     estado = (request.args.get("estado") or "").strip()
     carrier = (request.args.get("carrier") or "").strip()
     q = (request.args.get("q") or "").strip()
     include_archived = request.args.get("archived") == "1"
+    page, per_page = read_pagination_args(default_per_page=50)
+
+    total = repo.count_all_guides(
+        estado=estado, carrier=carrier, query=q, include_archived=include_archived,
+    )
+    pag = Pagination.build(page=page, per_page=per_page, total=total)
+
     rows = repo.list_all_guides(
         estado=estado, carrier=carrier, query=q, include_archived=include_archived,
+        limit=pag.per_page, offset=pag.offset,
     )
     notes_counts = repo.notes_count_by_guide([r["guia"] for r in rows])
     states = repo.list_guide_states()
@@ -587,6 +622,7 @@ def all_guides():
         include_archived=include_archived,
         excluded_states=excluded,
         estado_options=get_estado_novedad_options(),
+        pagination=pag,
     )
 
 

@@ -27,22 +27,29 @@
   </div>
 </div>
 
+{% macro _state_cell(row) %}
+{# Muestra el estado ACTUAL de Notion si está disponible, sino cae al propuesto del motor. #}
+{% set current = row['current_notion_estado'] if 'current_notion_estado' in row.keys() else '' %}
+{% set propuesto = row['estado_propuesto'] or '' %}
+{{ (current or propuesto or 'N/D') | e }}
+{% endmacro %}
+
 {# Entregadas #}
 <div style="margin-bottom:20px;">
   <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Entregadas ({{ breakdown['delivered'] | length }})</h2>
   {% if breakdown['delivered'] %}
-  <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Guías que estaban "Por recoger (INFORMADO)" y fueron entregadas.</p>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Guías que estuvieron "Por recoger (INFORMADO)" y según Notion ya fueron entregadas.</p>
   <div class="panel">
     <div class="panel-body flush">
       <table class="tbl">
-        <thead><tr><th>Guía</th><th>Cliente</th><th>Transportista</th><th>Estado final</th><th>Corrida</th></tr></thead>
+        <thead><tr><th>Guía</th><th>Cliente</th><th>Transportista</th><th>Estado actual</th><th>Última corrida</th></tr></thead>
         <tbody>
           {% for row in breakdown['delivered'] %}
           <tr>
             <td><a href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">{{ row['guia'] }}</a></td>
             <td>{{ row['cliente'] | e }}</td>
             <td>{{ carrier_badge(row['carrier']) }}</td>
-            <td>{{ row['estado_propuesto'] or 'N/D' | e }}</td>
+            <td>{{ _state_cell(row) }}</td>
             <td><a href="{{ url_for('dashboard.run_detail', run_id=row['run_id']) }}">#{{ row['run_id'] }}</a></td>
           </tr>
           {% endfor %}
@@ -59,18 +66,18 @@
 <div style="margin-bottom:20px;">
   <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Devueltas ({{ breakdown['returned'] | length }})</h2>
   {% if breakdown['returned'] %}
-  <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Guías que estaban "Por recoger (INFORMADO)" y fueron devueltas.</p>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Guías que estuvieron "Por recoger (INFORMADO)" y según Notion fueron devueltas / indemnizadas.</p>
   <div class="panel">
     <div class="panel-body flush">
       <table class="tbl">
-        <thead><tr><th>Guía</th><th>Cliente</th><th>Transportista</th><th>Estado final</th><th>Corrida</th></tr></thead>
+        <thead><tr><th>Guía</th><th>Cliente</th><th>Transportista</th><th>Estado actual</th><th>Última corrida</th></tr></thead>
         <tbody>
           {% for row in breakdown['returned'] %}
           <tr>
             <td><a href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">{{ row['guia'] }}</a></td>
             <td>{{ row['cliente'] | e }}</td>
             <td>{{ carrier_badge(row['carrier']) }}</td>
-            <td>{{ row['estado_propuesto'] or 'N/D' | e }}</td>
+            <td>{{ _state_cell(row) }}</td>
             <td><a href="{{ url_for('dashboard.run_detail', run_id=row['run_id']) }}">#{{ row['run_id'] }}</a></td>
           </tr>
           {% endfor %}
@@ -87,18 +94,18 @@
 <div style="margin-bottom:20px;">
   <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Pendientes — Aún por recoger ({{ breakdown['total_por_recoger'] }})</h2>
   {% if breakdown['pending'] %}
-  <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Guías que aún están en estado "Por recoger (INFORMADO)" en la corrida más reciente.</p>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">Guías que según Notion siguen en "Por recoger (INFORMADO)" — gestión real pendiente.</p>
   <div class="panel">
     <div class="panel-body flush">
       <table class="tbl">
-        <thead><tr><th>Guía</th><th>Cliente</th><th>Transportista</th><th>Estado</th><th>Acción requerida</th><th>Corrida</th></tr></thead>
+        <thead><tr><th>Guía</th><th>Cliente</th><th>Transportista</th><th>Estado actual</th><th>Acción requerida</th><th>Última corrida</th></tr></thead>
         <tbody>
           {% for row in breakdown['pending'] %}
           <tr>
             <td><a href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">{{ row['guia'] }}</a></td>
             <td>{{ row['cliente'] | e }}</td>
             <td>{{ carrier_badge(row['carrier']) }}</td>
-            <td>{{ row['estado_propuesto'] or 'N/D' | e }}</td>
+            <td>{{ _state_cell(row) }}</td>
             <td>{{ row['requiere_accion'] or '—' | e }}</td>
             <td><a href="{{ url_for('dashboard.run_detail', run_id=row['run_id']) }}">#{{ row['run_id'] }}</a></td>
           </tr>
@@ -111,4 +118,32 @@
   <div class="panel"><div class="panel-body"><div class="empty">No hay guías pendientes en "Por recoger (INFORMADO)".</div></div></div>
   {% endif %}
 </div>
+
+{# Resueltas por otra vía (transparencia) #}
+{% if breakdown.get('resolved_other') %}
+<div style="margin-bottom:20px;">
+  <h2 style="font-size:14px;font-weight:600;margin-bottom:8px;">Resueltas por otra vía ({{ breakdown['resolved_other'] | length }})</h2>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">
+    Guías que estuvieron en "Por recoger" pero cambiaron a otro estado en Notion (ej. PENDIENTE CLIENTE, En novedad, Indemnización). La operadora las gestionó por otra vía — el motor de tracking ya no las procesa porque su estado actual está fuera del filtro activo.
+  </p>
+  <div class="panel">
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead><tr><th>Guía</th><th>Cliente</th><th>Transportista</th><th>Estado actual</th><th>Última corrida</th></tr></thead>
+        <tbody>
+          {% for row in breakdown['resolved_other'] %}
+          <tr>
+            <td><a href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">{{ row['guia'] }}</a></td>
+            <td>{{ row['cliente'] | e }}</td>
+            <td>{{ carrier_badge(row['carrier']) }}</td>
+            <td>{{ _state_cell(row) }}</td>
+            <td><a href="{{ url_for('dashboard.run_detail', run_id=row['run_id']) }}">#{{ row['run_id'] }}</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

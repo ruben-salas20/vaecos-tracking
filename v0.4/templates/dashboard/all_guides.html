@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "macros.html" import carrier_badge, result_pill %}
+{% from "partials/_pagination.html" import pagination_nav %}
 {% block title %}Todas las guías{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -132,6 +133,7 @@
         {% endfor %}
       </tbody>
     </table>
+    {% if pagination is defined and pagination %}{{ pagination_nav(pagination, request) }}{% endif %}
   </div>
 </div>
 {% else %}

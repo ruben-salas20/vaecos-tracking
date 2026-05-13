@@ -1,0 +1,80 @@
+{# Macro reutilizable de navegación de paginación.
+
+   Uso:
+     {% from 'partials/_pagination.html' import pagination_nav %}
+     {{ pagination_nav(pagination, request) }}
+
+   Preserva todos los query params actuales excepto `page`.
+   Se renderiza solo si total_pages > 1.
+#}
+
+{% macro pagination_nav(pag, req, per_page_options=[25, 50, 100, 200]) -%}
+
+{# Construir un dict con TODOS los args necesarios para url_for:
+   - view_args: params del path (ej. run_id en /runs/<int:run_id>)
+   - args: query string (estado, carrier, filtros, etc.)
+   Excluye page y per_page porque los seteamos en cada link. #}
+{%- set base_args = {} -%}
+{%- for k, v in (req.view_args or {}).items() -%}
+  {%- if k not in ('page', 'per_page') -%}
+    {%- set _ = base_args.update({k: v}) -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- for k, v in req.args.items() -%}
+  {%- if k not in ('page', 'per_page') -%}
+    {%- set _ = base_args.update({k: v}) -%}
+  {%- endif -%}
+{%- endfor -%}
+
+<div class="pagination-bar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--border);font-size:13px;">
+
+  <div class="pagination-info" style="color:var(--muted);">
+    {% if pag.total > 0 %}
+      Mostrando <strong style="color:var(--ink);">{{ pag.start_item }}–{{ pag.end_item }}</strong> de <strong style="color:var(--ink);">{{ pag.total }}</strong>
+    {% else %}
+      Sin resultados
+    {% endif %}
+  </div>
+
+  {% if pag.total_pages > 1 %}
+  <div class="pagination-nav" style="display:flex;gap:4px;align-items:center;">
+    {# Botón anterior #}
+    {% if pag.has_prev %}
+      <a class="btn btn-sm" href="{{ url_for(req.endpoint, page=pag.page - 1, per_page=pag.per_page, **base_args) }}" title="Página anterior">‹</a>
+    {% else %}
+      <span class="btn btn-sm" style="opacity:.4;cursor:default;">‹</span>
+    {% endif %}
+
+    {# Números #}
+    {% for p in pag.window %}
+      {% if p is none %}
+        <span style="padding:0 6px;color:var(--muted);">…</span>
+      {% elif p == pag.page %}
+        <span class="btn btn-sm primary" style="cursor:default;">{{ p }}</span>
+      {% else %}
+        <a class="btn btn-sm" href="{{ url_for(req.endpoint, page=p, per_page=pag.per_page, **base_args) }}">{{ p }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {# Botón siguiente #}
+    {% if pag.has_next %}
+      <a class="btn btn-sm" href="{{ url_for(req.endpoint, page=pag.page + 1, per_page=pag.per_page, **base_args) }}" title="Página siguiente">›</a>
+    {% else %}
+      <span class="btn btn-sm" style="opacity:.4;cursor:default;">›</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="pagination-per-page" style="display:flex;align-items:center;gap:6px;color:var(--muted);">
+    <span>por página:</span>
+    {% for opt in per_page_options %}
+      {% if opt == pag.per_page %}
+        <span class="btn btn-sm primary" style="cursor:default;">{{ opt }}</span>
+      {% else %}
+        <a class="btn btn-sm" href="{{ url_for(req.endpoint, page=1, per_page=opt, **base_args) }}">{{ opt }}</a>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+</div>
+{%- endmacro %}

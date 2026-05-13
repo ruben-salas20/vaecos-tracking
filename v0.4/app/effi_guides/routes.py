@@ -63,8 +63,13 @@ def dashboard():
 @effi_bp.route("/queue")
 @login_required
 def queue_list():
-    items = _get_queue_repo().list_recent(limit=100)
-    return render_template("effi_guides/queue.html", items=items)
+    from ..pagination import Pagination, read_pagination_args
+    page, per_page = read_pagination_args(default_per_page=50)
+    repo = _get_queue_repo()
+    total = repo.count()
+    pag = Pagination.build(page=page, per_page=per_page, total=total)
+    items = repo.list_recent(limit=pag.per_page, offset=pag.offset)
+    return render_template("effi_guides/queue.html", items=items, pagination=pag)
 
 
 @effi_bp.route("/queue/<int:item_id>/resolve", methods=["POST"])
@@ -87,9 +92,17 @@ def queue_resolve(item_id: int):
 @effi_bp.route("/audit")
 @login_required
 def audit_list():
+    from ..pagination import Pagination, read_pagination_args
     only_order = request.args.get("orden_id", type=int)
-    entries = _get_audit_repo().list_recent(limit=200, only_orden_id=only_order)
-    return render_template("effi_guides/audit.html", entries=entries, only_order=only_order)
+    page, per_page = read_pagination_args(default_per_page=50)
+    repo = _get_audit_repo()
+    total = repo.count(only_orden_id=only_order)
+    pag = Pagination.build(page=page, per_page=per_page, total=total)
+    entries = repo.list_recent(limit=pag.per_page, offset=pag.offset, only_orden_id=only_order)
+    return render_template(
+        "effi_guides/audit.html",
+        entries=entries, only_order=only_order, pagination=pag,
+    )
 
 
 # ── Trigger manual de corrida ──────────────────────────────────────

@@ -76,6 +76,38 @@ class DashboardRepositoryTestCase(unittest.TestCase):
             conn.close()
 
     @staticmethod
+    def _seed_guide(repo: DashboardRepository, *,
+                    guia: str = "B001",
+                    cliente: str = "Acme",
+                    estado_novedad: str = "Por recoger (INFORMADO)",
+                    carrier: str = "effi",
+                    archived: int = 0,
+                    page_id: str | None = None) -> None:
+        """Inserta una fila en la tabla `guides` (snapshot local de Notion).
+
+        Necesario para tests de por_recoger_* después del fix que cross-checa
+        con `guides.estado_novedad` como fuente de verdad.
+        """
+        conn = repo._connect()
+        try:
+            conn.execute(
+                """INSERT OR REPLACE INTO guides
+                   (page_id, guia, cliente, estado_novedad, carrier,
+                    archived, last_synced_at, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    page_id or f"page-{guia}",
+                    guia, cliente, estado_novedad, carrier,
+                    archived,
+                    "2026-04-01T10:00:00",
+                    "2026-04-01T10:00:00",
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    @staticmethod
     def _seed_event(repo: DashboardRepository, *,
                     run_id: int = 1,
                     guia: str = "B001",
@@ -310,29 +342,31 @@ class DashboardRepositoryTestCase(unittest.TestCase):
     # ══════════════════════════════════════════════════════════════════
 
     def test_latest_por_recoger_total_returns_count_from_most_recent(self) -> None:
-        """latest_por_recoger_total MUST return count from most recent run."""
+        """latest_por_recoger_total cuenta guías actualmente Por recoger según
+        la tabla `guides` (sincronizada con Notion). B001 ya no cuenta porque
+        en el snapshot actual su estado cambió a ENTREGADA (mismo escenario
+        que en producción: la operadora la marca y ya no está pending)."""
         repo, tmp = self._make_repo()
         try:
             self._seed_one_run(repo, run_id=1, started_at="2026-04-01T10:00:00")
             self._seed_one_run(repo, run_id=2, started_at="2026-04-02T10:00:00")
-            # Run 1: one Por recoger
             self._seed_result(repo, run_id=1, guia="B001",
                               estado_propuesto="Por recoger (INFORMADO)",
-                              resultado="changed",
-                              requiere_accion="Avisar")
-            # Run 2 (most recent): two Por recoger
+                              resultado="changed", requiere_accion="Avisar")
             self._seed_result(repo, run_id=2, guia="B002",
                               estado_propuesto="Por recoger (INFORMADO)",
-                              resultado="changed",
-                              requiere_accion="Avisar")
+                              resultado="changed", requiere_accion="Avisar")
             self._seed_result(repo, run_id=2, guia="B003",
                               estado_propuesto="Por recoger (INFORMADO)",
-                              resultado="changed",
-                              requiere_accion="Avisar")
+                              resultado="changed", requiere_accion="Avisar")
+            # Snapshot actual de Notion: B001 ya entregada, B002 y B003 siguen pending.
+            self._seed_guide(repo, guia="B001", estado_novedad="ENTREGADA")
+            self._seed_guide(repo, guia="B002", estado_novedad="Por recoger (INFORMADO)")
+            self._seed_guide(repo, guia="B003", estado_novedad="Por recoger (INFORMADO)")
 
             total = repo.latest_por_recoger_total()
             self.assertEqual(total, 2,
-                             "Must count from most recent run (run_id=2)")
+                             "B002 y B003 siguen Por recoger en Notion; B001 ya no")
         finally:
             tmp.cleanup()
 
@@ -1460,7 +1494,6 @@ class Phase5M3v2BreakdownTestCase(unittest.TestCase):
     def test_breakdown_excludes_guides_still_in_por_recoger(self):
         """Guides currently in 'Por recoger' (not yet resolved) must NOT
         be counted as delivered or returned."""
-        # Use a repo where a guide is still Por recoger in latest run
         tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         db = Path(tmp.name) / "test_phase5_m3v2b.db"
         conn = v02_connect(db)
@@ -1490,6 +1523,16 @@ class Phase5M3v2BreakdownTestCase(unittest.TestCase):
                  "Por recoger (INFORMADO)", "changed",
                  "Paquete en agencia", "Avisar", None),
             )
+            # Snapshot actual de Notion (fuente de verdad para el breakdown).
+            conn.execute(
+                """INSERT INTO guides
+                   (page_id, guia, cliente, estado_novedad, carrier,
+                    archived, last_synced_at, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                ("page-STILL", "STILL", "Cliente Still",
+                 "Por recoger (INFORMADO)", "effi", 0,
+                 "2026-04-01T10:00:00", "2026-04-01T10:00:00"),
+            )
             conn.commit()
         finally:
             conn.close()
@@ -1498,7 +1541,6 @@ class Phase5M3v2BreakdownTestCase(unittest.TestCase):
             result = repo.por_recoger_delivery_breakdown()
             self.assertEqual(result["total_por_recoger"], 1,
                              "STILL guide must be in total_por_recoger")
-            # It hasn't resolved yet, so delivered=0 and returned=0
             self.assertEqual(result["delivered"], 0,
                              "Unresolved guides must not count as delivered")
             self.assertEqual(result["returned"], 0,
@@ -2152,6 +2194,24 @@ class Phase7AnalyticsPorRecogerPageTestCase(unittest.TestCase):
                  "EN RUTA", "En ruta", "En ruta",
                  "unchanged", "Sin novedad", "", None),
             )
+            # Snapshot actual de Notion (fuente de verdad para por_recoger_*):
+            # B001 → ENTREGADO (delivered), B002 → DEVOLUCION (returned),
+            # B003 → sigue Por recoger (pending), B004 → En ruta (no por recoger),
+            # B099 → eliminado de Notion (no aparece en guides).
+            for guia, cliente, estado in [
+                ("B001", "Cliente A", "ENTREGADO"),
+                ("B002", "Cliente B", "DEVOLUCION"),
+                ("B003", "Cliente C", "Por recoger (INFORMADO)"),
+                ("B004", "Cliente D", "En ruta"),
+            ]:
+                conn.execute(
+                    """INSERT OR REPLACE INTO guides
+                       (page_id, guia, cliente, estado_novedad, carrier,
+                        archived, last_synced_at, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (f"page-{guia}", guia, cliente, estado, "effi", 0,
+                     "2026-04-15T10:00:00", "2026-04-01T10:00:00"),
+                )
             conn.commit()
         finally:
             conn.close()

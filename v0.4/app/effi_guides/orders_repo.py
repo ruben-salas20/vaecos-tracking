@@ -211,18 +211,37 @@ class EffiAuditLogRepository:
         finally:
             conn.close()
 
-    def list_recent(self, limit: int = 100, only_orden_id: int | None = None) -> list[AuditEntry]:
+    def count(self, only_orden_id: int | None = None) -> int:
+        conn = v02_connect(self.db_path)
+        try:
+            if only_orden_id is not None:
+                row = conn.execute(
+                    "SELECT COUNT(*) AS c FROM effi_audit_log WHERE orden_id = ?",
+                    (only_orden_id,),
+                ).fetchone()
+            else:
+                row = conn.execute("SELECT COUNT(*) AS c FROM effi_audit_log").fetchone()
+            return int(row["c"]) if row else 0
+        finally:
+            conn.close()
+
+    def list_recent(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        only_orden_id: int | None = None,
+    ) -> list[AuditEntry]:
         conn = v02_connect(self.db_path)
         try:
             if only_orden_id is not None:
                 rows = conn.execute(
-                    "SELECT * FROM effi_audit_log WHERE orden_id = ? ORDER BY ts DESC LIMIT ?",
-                    (only_orden_id, limit),
+                    "SELECT * FROM effi_audit_log WHERE orden_id = ? ORDER BY ts DESC LIMIT ? OFFSET ?",
+                    (only_orden_id, limit, offset),
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT * FROM effi_audit_log ORDER BY ts DESC LIMIT ?",
-                    (limit,),
+                    "SELECT * FROM effi_audit_log ORDER BY ts DESC LIMIT ? OFFSET ?",
+                    (limit, offset),
                 ).fetchall()
             return [
                 AuditEntry(
@@ -312,14 +331,22 @@ class EffiReviewQueueRepository:
         finally:
             conn.close()
 
-    def list_recent(self, limit: int = 50) -> list[ReviewItem]:
+    def list_recent(self, limit: int = 50, offset: int = 0) -> list[ReviewItem]:
         conn = v02_connect(self.db_path)
         try:
             rows = conn.execute(
-                "SELECT * FROM effi_review_queue ORDER BY created_at DESC LIMIT ?",
-                (limit,),
+                "SELECT * FROM effi_review_queue ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (limit, offset),
             ).fetchall()
             return [self._row_to_item(r) for r in rows]
+        finally:
+            conn.close()
+
+    def count(self) -> int:
+        conn = v02_connect(self.db_path)
+        try:
+            row = conn.execute("SELECT COUNT(*) AS c FROM effi_review_queue").fetchone()
+            return int(row["c"]) if row else 0
         finally:
             conn.close()
 
