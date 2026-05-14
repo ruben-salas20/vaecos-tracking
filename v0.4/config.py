@@ -28,6 +28,10 @@ class Settings:
     notion_api_key: str
     notion_version: str
     notion_data_source_id: str
+    minimax_api_key: str
+    minimax_model: str
+    minimax_base_url: str
+    minimax_timeout_seconds: int
 
 
 def load_settings(base_dir: Path) -> Settings:
@@ -50,4 +54,8 @@ def load_settings(base_dir: Path) -> Settings:
         notion_api_key=os.environ.get("NOTION_API_KEY", ""),
         notion_version=os.environ.get("NOTION_VERSION", "2025-09-03"),
         notion_data_source_id=os.environ.get("NOTION_DATA_SOURCE_ID", ""),
+        minimax_api_key=os.environ.get("MINIMAX_API_KEY", "").strip(),
+        minimax_model=os.environ.get("MINIMAX_MODEL", "MiniMax-M2.7").strip(),
+        minimax_base_url=os.environ.get("MINIMAX_BASE_URL", "https://api.minimax.io/v1").rstrip("/"),
+        minimax_timeout_seconds=int(os.environ.get("MINIMAX_TIMEOUT_SECONDS", "30")),
     )

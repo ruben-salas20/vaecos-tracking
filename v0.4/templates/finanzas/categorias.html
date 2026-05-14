@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% from "macros.html" import crumbs %}
+{% block title %}Catálogo de categorías{% endblock %}
+{% block content %}
+
+{{ crumbs(['Finanzas', 'Catálogo categorías']) }}
+
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Catálogo de categorías</div>
+    <div class="page-sub">
+      Las categorías se asignan a cada movimiento. Las desactivadas dejan de aparecer en
+      el formulario de nuevo movimiento, pero <strong>siguen mostrándose en históricos</strong>.
+    </div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('finanzas.list_movements') }}" class="btn">Volver al listado</a>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-head"><div class="panel-title">Nueva categoría</div></div>
+  <div class="panel-body">
+    <form method="post" action="{{ url_for('finanzas.categorias_create') }}"
+          style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;">
+        <label class="form-label" for="new-nombre">Nombre</label>
+        <input class="input" id="new-nombre" type="text" name="nombre" required maxlength="60" placeholder="ej. MARKETING">
+      </div>
+      <div>
+        <label class="form-label" for="new-color">Color</label>
+        <input class="input" id="new-color" type="color" name="color" value="#94a3b8" style="height:38px;width:60px;padding:2px;">
+      </div>
+      <button type="submit" class="btn brand">+ Crear</button>
+    </form>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-body flush">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th style="width:50px;">ID</th>
+          <th>Nombre</th>
+          <th style="width:100px;">Color</th>
+          <th style="width:80px;" class="num">Mov.</th>
+          <th style="width:100px;">Estado</th>
+          <th style="width:220px;">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in categories %}
+        <tr>
+          <td class="mono">{{ c.id }}</td>
+          <td>
+            <span class="pill" style="background:{{ c.color or '#94a3b8' }};color:#fff;">{{ c.nombre }}</span>
+          </td>
+          <td class="mono">{{ c.color or '—' }}</td>
+          <td class="num mono">{{ usage.get(c.id, 0) }}</td>
+          <td>
+            {% if c.activa %}
+            <span class="pill" style="background:#dcfce7;color:#166534;">Activa</span>
+            {% else %}
+            <span class="pill" style="background:#fee2e2;color:#991b1b;">Inactiva</span>
+            {% endif %}
+          </td>
+          <td>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <form method="post" action="{{ url_for('finanzas.categorias_edit', cat_id=c.id) }}"
+                    style="display:flex;gap:4px;align-items:center;margin:0;">
+                <input type="text" name="nombre" value="{{ c.nombre | e }}" class="input"
+                       style="height:30px;padding:3px 8px;font-size:12px;width:130px;" maxlength="60" required>
+                <input type="color" name="color" value="{{ c.color or '#94a3b8' }}"
+                       style="height:30px;width:34px;padding:1px;border:1px solid var(--border);border-radius:4px;">
+                <button type="submit" class="btn btn-sm" title="Guardar cambios">✓</button>
+              </form>
+              <form method="post" action="{{ url_for('finanzas.categorias_toggle', cat_id=c.id) }}" style="margin:0;">
+                <button type="submit" class="btn btn-sm" title="{% if c.activa %}Desactivar{% else %}Activar{% endif %}">
+                  {% if c.activa %}🚫{% else %}✓{% endif %}
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div style="margin-top:16px;color:var(--muted);font-size:13px;">
+  <strong>Nota:</strong> no se permite borrar una categoría (FK constraint protege los movimientos históricos).
+  Si querés quitarla del catálogo activo, usá <em>Desactivar</em>.
+</div>
+
+{% endblock %}

@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% from "macros.html" import crumbs %}
+{% from "partials/_pagination.html" import pagination_nav %}
+{% block title %}Finanzas{% endblock %}
+
+{% macro fmt_cop(centavos) -%}
+{%- set neg = (centavos < 0) -%}
+{%- set abs_cent = centavos if not neg else -centavos -%}
+{%- set raw = (abs_cent / 100) | int -%}
+{%- set s = raw | string -%}
+{%- set parts = [] -%}
+{%- set n = s | length -%}
+{%- for i in range(n) -%}
+  {%- set idx = n - 1 - i -%}
+  {%- if i > 0 and (i % 3 == 0) -%}
+    {%- set _ = parts.append('.') -%}
+  {%- endif -%}
+  {%- set _ = parts.append(s[idx]) -%}
+{%- endfor -%}
+{{ '-' if neg else '' }}${{ parts | reverse | join('') }}
+{%- endmacro %}
+
+{% macro type_pill(t) -%}
+{%- if t == 'ingreso' -%}
+<span class="pill" style="background:#dcfce7;color:#166534;">Ingreso</span>
+{%- elif t == 'egreso' -%}
+<span class="pill" style="background:#fee2e2;color:#991b1b;">Egreso</span>
+{%- else -%}
+<span class="pill" style="background:#dbeafe;color:#1e3a8a;">Transferencia</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+{{ crumbs(['Finanzas', 'Movimientos']) }}
+
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Movimientos</div>
+    <div class="page-sub">Libro de ingresos y egresos en COP. Histórico importado desde Notion + capturas nuevas en la app.</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('finanzas.new_form') }}" class="btn brand">+ Nuevo movimiento</a>
+  </div>
+</div>
+
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+  <div class="kpi">
+    <div class="kpi-label">Ingresos</div>
+    <div class="kpi-value" style="color:#16a34a;">{{ fmt_cop(totals.ingresos_centavos) }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Egresos</div>
+    <div class="kpi-value" style="color:#dc2626;">{{ fmt_cop(totals.egresos_centavos) }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Balance</div>
+    <div class="kpi-value" style="color:{{ '#16a34a' if totals.balance_centavos >= 0 else '#dc2626' }};">
+      {{ fmt_cop(totals.balance_centavos) }}
+    </div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Movimientos</div>
+    <div class="kpi-value">{{ totals.count }}</div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px;">
+  <form method="get" action="{{ url_for('finanzas.list_movements') }}" class="filter-form">
+
+    <div class="filter-group">
+      <span class="filter-group-label">Año</span>
+      <select class="input" name="year" style="min-width:120px;">
+        <option value="0" {% if filters.year == 0 %}selected{% endif %}>Todos</option>
+        {% for y in years %}
+        <option value="{{ y }}" {% if filters.year == y %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <span class="filter-group-label">Mes</span>
+      <select class="input" name="month" style="min-width:140px;">
+        <option value="0" {% if filters.month == 0 %}selected{% endif %}>Todos</option>
+        {% for m, name in months %}
+        <option value="{{ m }}" {% if filters.month == m %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-divider"></div>
+
+    <div class="filter-group">
+      <span class="filter-group-label">Tipo</span>
+      <select class="input" name="tipo" style="min-width:160px;">
+        <option value="">— Todos —</option>
+        <option value="ingreso"       {% if filters.tipo == 'ingreso' %}selected{% endif %}>Ingreso</option>
+        <option value="egreso"        {% if filters.tipo == 'egreso' %}selected{% endif %}>Egreso</option>
+        <option value="transferencia" {% if filters.tipo == 'transferencia' %}selected{% endif %}>Transferencia</option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <span class="filter-group-label">Categoría</span>
+      <select class="input" name="categoria" style="min-width:180px;">
+        <option value="0">— Todas —</option>
+        {% for c in categories %}
+        <option value="{{ c.id }}" {% if filters.categoria == c.id %}selected{% endif %}>
+          {{ c.nombre }}{% if not c.activa %} (inactiva){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-group" style="flex:1;min-width:200px;">
+      <span class="filter-group-label">Buscar</span>
+      <input class="input search" type="text" name="q" value="{{ filters.q | e }}" placeholder="observación...">
+    </div>
+
+    <div class="filter-divider"></div>
+
+    <div class="filter-group">
+      <span class="filter-group-label" style="visibility:hidden;">_</span>
+      <div class="filter-row">
+        <button type="submit" class="btn primary">Aplicar</button>
+        <a href="{{ url_for('finanzas.list_movements') }}" class="btn">Limpiar</a>
+      </div>
+    </div>
+  </form>
+
+  <div class="panel-body flush">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th style="width:120px;">Fecha</th>
+          <th style="width:110px;">Tipo</th>
+          <th>Observación</th>
+          <th style="width:240px;">Categorías</th>
+          <th class="num" style="width:140px;">Monto</th>
+          <th style="width:80px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in movements %}
+        <tr>
+          <td class="mono">{{ m.fecha }}</td>
+          <td>{{ type_pill(m.tipo) }}</td>
+          <td>{{ m.observacion }}</td>
+          <td>
+            {% for c in m.categorias %}
+            <span class="pill" style="background:{{ c.color or '#e2e8f0' }};color:#fff;font-size:11px;">
+              {{ c.nombre }}
+            </span>
+            {% endfor %}
+          </td>
+          <td class="num mono" style="color:{{ '#16a34a' if m.tipo == 'ingreso' else ('#dc2626' if m.tipo == 'egreso' else '#1e3a8a') }};">
+            {{ fmt_cop(m.monto_centavos) }}
+          </td>
+          <td>
+            {% if current_user.role == 'admin' or m.creado_por == current_user.email %}
+            <a href="{{ url_for('finanzas.edit_form', mov_id=m.id) }}" class="btn btn-sm">Editar</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px;">Sin movimientos para estos filtros.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if pagination %}{{ pagination_nav(pagination, request) }}{% endif %}
+  </div>
+</div>
+
+{% endblock %}

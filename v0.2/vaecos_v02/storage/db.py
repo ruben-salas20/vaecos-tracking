@@ -525,6 +525,156 @@ def seed_effi_catalog(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
+def _ensure_fin_movements_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "fin_movements"):
+        return
+    connection.execute("""
+        CREATE TABLE fin_movements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha TEXT NOT NULL,
+            tipo TEXT NOT NULL
+                CHECK (tipo IN ('ingreso', 'egreso', 'transferencia')),
+            monto_centavos INTEGER NOT NULL,
+            moneda TEXT NOT NULL DEFAULT 'COP',
+            observacion TEXT NOT NULL,
+            guia_ref TEXT,
+            external_ref TEXT UNIQUE,
+            creado_por TEXT NOT NULL,
+            creado_at TEXT NOT NULL,
+            actualizado_por TEXT,
+            actualizado_at TEXT
+        )
+    """)
+    connection.execute("CREATE INDEX idx_fin_movements_fecha ON fin_movements (fecha)")
+    connection.execute("CREATE INDEX idx_fin_movements_tipo ON fin_movements (tipo)")
+    connection.commit()
+
+
+def _ensure_fin_categories_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "fin_categories"):
+        return
+    connection.execute("""
+        CREATE TABLE fin_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL UNIQUE,
+            color TEXT,
+            activa INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        )
+    """)
+    connection.commit()
+
+
+def _ensure_fin_movement_categories_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "fin_movement_categories"):
+        return
+    connection.execute("""
+        CREATE TABLE fin_movement_categories (
+            movement_id INTEGER NOT NULL,
+            category_id INTEGER NOT NULL,
+            PRIMARY KEY (movement_id, category_id),
+            FOREIGN KEY (movement_id) REFERENCES fin_movements(id) ON DELETE CASCADE,
+            FOREIGN KEY (category_id) REFERENCES fin_categories(id) ON DELETE RESTRICT
+        )
+    """)
+    connection.execute(
+        "CREATE INDEX idx_fin_movement_categories_cat ON fin_movement_categories (category_id)"
+    )
+    connection.commit()
+
+
+def seed_fin_categories(connection: sqlite3.Connection) -> None:
+    """Seed inicial del catálogo financiero — 13 categorías observadas + SIN_CATEGORIA.
+
+    Idempotente: si la tabla ya tiene contenido, no toca nada. Los colores son
+    tentativos y editables desde /finanzas/categorias.
+    """
+    if not _table_exists(connection, "fin_categories"):
+        return
+    count = connection.execute("SELECT COUNT(*) FROM fin_categories").fetchone()[0]
+    if count > 0:
+        return
+    from datetime import datetime as _datetime
+    now = _datetime.now().isoformat(timespec="seconds")
+    # Paleta muted/desaturada — texto blanco legible (L≈55-60%, S≈30-35%).
+    seed = [
+        ("SIN_CATEGORIA",         "#94a3b8"),
+        ("PUBLICIDAD",            "#5b7ba8"),
+        ("NOMINA",                "#5a9a7a"),
+        ("RETIRO",                "#b8884e"),
+        ("DEUDA",                 "#b46d6d"),
+        ("PLATAFORMAS",           "#8478a8"),
+        ("OTROS",                 "#6c7a8c"),
+        ("IMPUESTOS",             "#9d5858"),
+        ("AHORRO",                "#5a9590"),
+        ("RENDIMIENTOS",          "#87a067"),
+        ("CASHBACK",              "#5a96a8"),
+        ("PRÉSTAMO",              "#957ea8"),
+        ("DEVOLUCIÓN PRÉSTAMO",   "#7c6b9c"),
+    ]
+    for nombre, color in seed:
+        connection.execute(
+            "INSERT INTO fin_categories (nombre, color, activa, created_at) VALUES (?, ?, 1, ?)",
+            (nombre, color, now),
+        )
+    connection.commit()
+
+
+def _ensure_ai_conversations_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "ai_conversations"):
+        return
+    connection.execute("""
+        CREATE TABLE ai_conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            started_at TEXT NOT NULL,
+            last_message_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+    connection.execute("CREATE INDEX idx_ai_conversations_user ON ai_conversations (user_id, last_message_at DESC)")
+    connection.commit()
+
+
+def _ensure_ai_messages_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "ai_messages"):
+        return
+    connection.execute("""
+        CREATE TABLE ai_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL,
+            role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool')),
+            content TEXT NOT NULL,
+            tool_name TEXT,
+            tool_args_json TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (conversation_id) REFERENCES ai_conversations(id) ON DELETE CASCADE
+        )
+    """)
+    connection.execute("CREATE INDEX idx_ai_messages_conv ON ai_messages (conversation_id, id)")
+    connection.commit()
+
+
+def _ensure_ai_audit_log_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "ai_audit_log"):
+        return
+    connection.execute("""
+        CREATE TABLE ai_audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            tool_name TEXT NOT NULL,
+            args_json TEXT,
+            result_summary TEXT,
+            latency_ms INTEGER,
+            ok INTEGER NOT NULL DEFAULT 1,
+            error_msg TEXT,
+            ts TEXT NOT NULL
+        )
+    """)
+    connection.execute("CREATE INDEX idx_ai_audit_log_user_ts ON ai_audit_log (user_id, ts DESC)")
+    connection.commit()
+
+
 def _apply_migrations(connection: sqlite3.Connection) -> None:
     """Idempotent ALTERs for schemas created before new columns existed."""
     _migrate_legacy_rules_table(connection)
@@ -556,7 +706,14 @@ def _apply_migrations(connection: sqlite3.Connection) -> None:
     _ensure_effi_orders_table(connection)
     _ensure_effi_review_queue_table(connection)
     _ensure_effi_audit_log_table(connection)
+    _ensure_fin_movements_table(connection)
+    _ensure_fin_categories_table(connection)
+    _ensure_fin_movement_categories_table(connection)
+    _ensure_ai_conversations_table(connection)
+    _ensure_ai_messages_table(connection)
+    _ensure_ai_audit_log_table(connection)
     seed_effi_catalog(connection)
+    seed_fin_categories(connection)
 
 
 def _migrate_legacy_rules_table(connection: sqlite3.Connection) -> None:

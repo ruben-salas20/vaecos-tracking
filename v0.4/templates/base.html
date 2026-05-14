@@ -20,6 +20,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/ai_widget.css') }}">
 </head>
 <body>
 <div class="app">
@@ -29,7 +30,9 @@
     {% block content %}{% endblock %}
   </main>
 </div>
+{% include "partials/ai_widget.html" %}
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="{{ url_for('static', filename='js/ai_widget.js') }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

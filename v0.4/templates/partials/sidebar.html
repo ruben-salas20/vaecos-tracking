@@ -50,6 +50,18 @@
     </div>
 
     <div class="nav-group">
+      <div class="nav-label">Finanzas</div>
+      <a href="{{ url_for('finanzas.list_movements') }}" data-label="Movimientos" class="nav-item {% if active_endpoint in ['finanzas.list_movements', 'finanzas.new_form', 'finanzas.new_save', 'finanzas.edit_form', 'finanzas.edit_save'] %}active{% endif %}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <span>Movimientos</span>
+      </a>
+      <a href="{{ url_for('finanzas.analytics') }}" data-label="Analytics finanzas" class="nav-item {% if active_endpoint == 'finanzas.analytics' %}active{% endif %}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+        <span>Analytics finanzas</span>
+      </a>
+    </div>
+
+    <div class="nav-group">
       <div class="nav-label">Acciones</div>
       <a href="{{ url_for('dashboard.run_new') }}" data-label="Nueva corrida" class="nav-item {% if active_endpoint in ['dashboard.run_new', 'runs.run_progress'] %}active{% endif %}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -79,6 +91,10 @@
       <a href="{{ url_for('effi.catalog_list') }}" data-label="Catálogo Effi" class="nav-item {% if active_endpoint in ['effi.catalog_list', 'effi.catalog_edit'] %}active{% endif %}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
         <span>Catálogo Effi</span>
+      </a>
+      <a href="{{ url_for('finanzas.categorias_list') }}" data-label="Catálogo finanzas" class="nav-item {% if active_endpoint in ['finanzas.categorias_list', 'finanzas.categorias_create', 'finanzas.categorias_edit', 'finanzas.categorias_toggle'] %}active{% endif %}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        <span>Catálogo finanzas</span>
       </a>
     </div>
     {% endif %}

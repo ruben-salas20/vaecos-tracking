@@ -17,7 +17,7 @@ from vaecos_v02.core.rules import DEFAULT_RULES
 def create_app() -> Flask:
     from .config import load_settings
     from .extensions import limiter
-    from .utils import fmt_ts, e_trunc, fmt_duration, initials_of
+    from .utils import fmt_ts, e_trunc, fmt_duration, fmt_duration_seconds, initials_of
 
     base_dir = Path(__file__).resolve().parents[1]  # v0.4/
     settings = load_settings(base_dir)
@@ -49,6 +49,7 @@ def create_app() -> Flask:
     app.jinja_env.filters["fmt_ts"] = fmt_ts
     app.jinja_env.filters["e_trunc"] = e_trunc
     app.jinja_env.filters["fmt_duration"] = fmt_duration
+    app.jinja_env.filters["fmt_duration_seconds"] = fmt_duration_seconds
     app.jinja_env.filters["initials"] = initials_of
 
     from .auth.routes import auth_bp
@@ -57,12 +58,16 @@ def create_app() -> Flask:
     from .import_guides.routes import import_bp
     from .users.routes import users_bp
     from .effi_guides.routes import effi_bp
+    from .finanzas.routes import finanzas_bp
+    from .ai.routes import ai_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(runs_bp)
     app.register_blueprint(import_bp)
     app.register_blueprint(users_bp)
     app.register_blueprint(effi_bp)
+    app.register_blueprint(finanzas_bp)
+    app.register_blueprint(ai_bp)
 
     @app.errorhandler(429)
     def _ratelimit_handler(e):

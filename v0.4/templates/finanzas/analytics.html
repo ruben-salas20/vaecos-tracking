@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% from "macros.html" import crumbs %}
+{% block title %}Finanzas — Analytics{% endblock %}
+
+{% macro fmt_cop(centavos) -%}
+{%- set neg = (centavos < 0) -%}
+{%- set abs_cent = centavos if not neg else -centavos -%}
+{%- set raw = (abs_cent / 100) | int -%}
+{%- set s = raw | string -%}
+{%- set parts = [] -%}
+{%- set n = s | length -%}
+{%- for i in range(n) -%}
+  {%- set idx = n - 1 - i -%}
+  {%- if i > 0 and (i % 3 == 0) -%}{%- set _ = parts.append('.') -%}{%- endif -%}
+  {%- set _ = parts.append(s[idx]) -%}
+{%- endfor -%}
+{{ '-' if neg else '' }}${{ parts | reverse | join('') }}
+{%- endmacro %}
+
+{% set MONTH_NAMES = {'01':'Ene','02':'Feb','03':'Mar','04':'Abr','05':'May','06':'Jun','07':'Jul','08':'Ago','09':'Sep','10':'Oct','11':'Nov','12':'Dic'} %}
+
+{% block content %}
+{{ crumbs(['Finanzas', 'Analytics']) }}
+
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Analytics financieros</div>
+    <div class="page-sub">KPIs operativos, breakdown por categoría y evolución mensual del período seleccionado.</div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('finanzas.list_movements') }}" class="btn">Volver al listado</a>
+    {% set export_args = {} %}
+    {% if filters.year and filters.year != 0 %}{% set _ = export_args.update({'year': filters.year}) %}{% endif %}
+    <a href="{{ url_for('finanzas.export_xlsx', **export_args) }}" class="btn brand">⬇ Exportar Excel</a>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:16px;">
+  <form method="get" action="{{ url_for('finanzas.analytics') }}" class="filter-form">
+    <div class="filter-group">
+      <span class="filter-group-label">Año</span>
+      <select class="input" name="year" style="min-width:120px;">
+        <option value="0" {% if filters.year == 0 %}selected{% endif %}>Todos</option>
+        {% for y in years %}
+        <option value="{{ y }}" {% if filters.year == y %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-group">
+      <span class="filter-group-label" style="visibility:hidden;">_</span>
+      <div class="filter-row">
+        <button type="submit" class="btn primary">Aplicar</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+  <div class="kpi">
+    <div class="kpi-label">Ingresos</div>
+    <div class="kpi-value" style="color:#16a34a;">{{ fmt_cop(totals.ingresos_centavos) }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Egresos</div>
+    <div class="kpi-value" style="color:#dc2626;">{{ fmt_cop(totals.egresos_centavos) }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Balance</div>
+    <div class="kpi-value" style="color:{{ '#16a34a' if totals.balance_centavos >= 0 else '#dc2626' }};">
+      {{ fmt_cop(totals.balance_centavos) }}
+    </div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Movimientos</div>
+    <div class="kpi-value">{{ totals.count }}</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+
+  {# ── Breakdown por categoría ────────────────────────────── #}
+  <div class="panel">
+    <div class="panel-head"><div class="panel-title">Top categorías</div></div>
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Categoría</th>
+            <th class="num">Ingresos</th>
+            <th class="num">Egresos</th>
+            <th class="num" style="width:60px;">Mov.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in breakdown[:15] %}
+          <tr>
+            <td>
+              <span class="pill" style="background:{{ c.color or '#e2e8f0' }};color:#fff;font-size:11px;">
+                {{ c.nombre }}
+              </span>
+            </td>
+            <td class="num mono" style="color:{{ '#16a34a' if c.ingresos_centavos else 'var(--muted)' }};">
+              {{ fmt_cop(c.ingresos_centavos) if c.ingresos_centavos else '—' }}
+            </td>
+            <td class="num mono" style="color:{{ '#dc2626' if c.egresos_centavos else 'var(--muted)' }};">
+              {{ fmt_cop(c.egresos_centavos) if c.egresos_centavos else '—' }}
+            </td>
+            <td class="num mono">{{ c.count }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px;">Sin datos para el período.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ── Evolución mensual ──────────────────────────────────── #}
+  <div class="panel">
+    <div class="panel-head"><div class="panel-title">Evolución mensual</div></div>
+    <div class="panel-body flush">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Mes</th>
+            <th class="num">Ingresos</th>
+            <th class="num">Egresos</th>
+            <th class="num">Balance</th>
+            <th class="num" style="width:60px;">Mov.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in evolution %}
+          {% set year_part = e.mes[:4] %}
+          {% set month_part = e.mes[5:7] %}
+          <tr>
+            <td class="mono">{{ MONTH_NAMES[month_part] }} {{ year_part }}</td>
+            <td class="num mono" style="color:#16a34a;">{{ fmt_cop(e.ingresos_centavos) }}</td>
+            <td class="num mono" style="color:#dc2626;">{{ fmt_cop(e.egresos_centavos) }}</td>
+            <td class="num mono" style="color:{{ '#16a34a' if e.balance_centavos >= 0 else '#dc2626' }};">
+              {{ fmt_cop(e.balance_centavos) }}
+            </td>
+            <td class="num mono">{{ e.count }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px;">Sin datos.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

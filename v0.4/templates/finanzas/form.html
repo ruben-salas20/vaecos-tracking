@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% from "macros.html" import crumbs %}
+{% block title %}{% if movement %}Editar movimiento{% else %}Nuevo movimiento{% endif %}{% endblock %}
+{% block content %}
+
+{% set is_edit = movement is not none %}
+{% set vals = {} %}
+{% if is_edit %}
+  {% set _ = vals.update({
+    'fecha': movement.fecha,
+    'tipo': movement.tipo,
+    'monto': '%.2f' | format(movement.monto_centavos / 100),
+    'observacion': movement.observacion,
+    'guia_ref': movement.guia_ref or '',
+    'cat_ids': movement.categorias | map(attribute='id') | list,
+  }) %}
+{% else %}
+  {% set _ = vals.update({
+    'fecha': defaults.fecha,
+    'tipo': defaults.tipo,
+    'monto': '',
+    'observacion': '',
+    'guia_ref': '',
+    'cat_ids': [],
+  }) %}
+{% endif %}
+
+{{ crumbs(['Finanzas', 'Movimientos', 'Editar' if is_edit else 'Nuevo']) }}
+
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">{% if is_edit %}Editar movimiento #{{ movement.id }}{% else %}Nuevo movimiento{% endif %}</div>
+    <div class="page-sub">
+      {% if is_edit %}
+        Creado por <span class="mono">{{ movement.creado_por }}</span> el <span class="mono">{{ movement.creado_at | fmt_ts }}</span>.
+        {% if movement.actualizado_at %}Última edición: <span class="mono">{{ movement.actualizado_por }}</span> el <span class="mono">{{ movement.actualizado_at | fmt_ts }}</span>.{% endif %}
+      {% else %}
+        Registrá un ingreso, egreso o transferencia interna en COP.
+      {% endif %}
+    </div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('finanzas.list_movements') }}" class="btn">Volver</a>
+  </div>
+</div>
+
+<div class="panel" style="max-width:720px;">
+  <div class="panel-body">
+    <form method="post"
+          action="{% if is_edit %}{{ url_for('finanzas.edit_save', mov_id=movement.id) }}{% else %}{{ url_for('finanzas.new_save') }}{% endif %}"
+          style="display:flex;flex-direction:column;gap:14px;">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label class="form-label" for="fecha">Fecha</label>
+          <input class="input" id="fecha" type="date" name="fecha" value="{{ vals.fecha }}" required>
+        </div>
+        <div>
+          <label class="form-label" for="tipo">Tipo</label>
+          <select class="input" id="tipo" name="tipo" required>
+            <option value="ingreso"       {% if vals.tipo == 'ingreso' %}selected{% endif %}>Ingreso</option>
+            <option value="egreso"        {% if vals.tipo == 'egreso' %}selected{% endif %}>Egreso</option>
+            <option value="transferencia" {% if vals.tipo == 'transferencia' %}selected{% endif %}>Transferencia interna</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label class="form-label" for="monto">Monto (COP)</label>
+        <input class="input mono" id="monto" type="text" name="monto"
+               value="{{ vals.monto }}" placeholder="200000,00" required
+               inputmode="decimal" pattern="[0-9.,]+">
+        <div class="form-hint">Formato colombiano: '.' separador miles, ',' decimal. También acepta '200000.50'.</div>
+      </div>
+
+      <div>
+        <label class="form-label" for="observacion">Observación</label>
+        <input class="input" id="observacion" type="text" name="observacion"
+               value="{{ vals.observacion | e }}" placeholder="ej. Pago Tarjeta BBVA" required maxlength="500">
+      </div>
+
+      <div>
+        <label class="form-label">Categorías</label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;border:1px solid var(--border);border-radius:6px;padding:10px;">
+          {% for c in categories %}
+          <label class="check" style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px;">
+            <input type="checkbox" name="categorias" value="{{ c.id }}"
+                   {% if c.id in vals.cat_ids %}checked{% endif %}>
+            <span style="display:inline-flex;align-items:center;gap:6px;">
+              <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{{ c.color or '#94a3b8' }};"></span>
+              {{ c.nombre }}{% if not c.activa %} <span class="muted">(inactiva)</span>{% endif %}
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+        <div class="form-hint">Marcá una o más. Multi-categoría es válido (ej. "DEUDA + PUBLICIDAD").</div>
+      </div>
+
+      <div>
+        <label class="form-label" for="guia_ref">Guía relacionada (opcional)</label>
+        <input class="input mono" id="guia_ref" type="text" name="guia_ref"
+               value="{{ vals.guia_ref | e }}" placeholder="ej. B263378877-1" maxlength="60">
+        <div class="form-hint">Si el movimiento corresponde a una guía específica (flete, recaudo, etc.), referenciala acá.</div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding-top:6px;border-top:1px solid var(--border);">
+        {% if is_edit and current_user.role == 'admin' %}
+        {# Usamos formaction/formmethod (HTML5) en vez de <form> anidado para evitar que
+           el navegador aplane los forms y submita al form exterior. #}
+        <button type="submit"
+                formaction="{{ url_for('finanzas.delete', mov_id=movement.id) }}"
+                formmethod="post"
+                formnovalidate
+                onclick="return confirm('¿Eliminar este movimiento? Esta acción no se puede deshacer.');"
+                class="btn"
+                style="background:#fef2f2;color:#dc2626;border-color:#fecaca;">
+          Eliminar
+        </button>
+        {% else %}
+        <span></span>
+        {% endif %}
+        <div style="display:flex;gap:8px;">
+          <a href="{{ url_for('finanzas.list_movements') }}" class="btn">Cancelar</a>
+          <button type="submit" class="btn brand">{% if is_edit %}Guardar cambios{% else %}Crear movimiento{% endif %}</button>
+        </div>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+{% endblock %}
