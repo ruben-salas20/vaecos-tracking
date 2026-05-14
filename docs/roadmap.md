@@ -1,6 +1,28 @@
 # Checklist
 
+> **Última actualización: 2026-05-14**
+>
+> Para roadmap estratégico de alto nivel ver `docs/roadmap-estrategico.md` (Fases 1-7).
+> Este documento es el checklist técnico operativo (qué está en código, qué está en producción).
+
 ## Estado actual del proyecto
+
+### Fases completadas
+
+- ✅ **Fase 1** (2026-05-07) — Flask + Auth + Excel + UX para operadora + Deploy VPS Hostinger.
+- 🟡 **Fase 2** — DB interna como fuente de verdad: 2.1, 2.2, 2.3 entregadas. Pendiente 2.4 (inversión polaridad de escrituras Notion ↔ local) + 2.5 (validador consistencia).
+- ✅ **Fase 3** (2026-05) — Bot Effi (Creador de guías automatizado): catálogo, classifier, validador regex+IA híbrido, bot Playwright headless, cola humana, audit log, auto-sync a Notion, cron horario, digest diario por email, auto-relogin.
+- ✅ **Fase 4** (2026-05-14) — Inteligencia operativa + UI refresh: analytics rediseñado, paginación en 7 vistas, export Effi a xlsx, crumbs en todas las vistas, filterbar pattern unificado, forms vanilla CSS modernizados.
+- ✅ **Fase 5** (2026-05-14) — Módulo financiero + Asistente IA conversacional:
+  - 5.1: 445 movimientos importados desde Notion, CRUD con multi-categoría, analytics + export xlsx, catálogo admin.
+  - 5.2: widget IA flotante con MiniMax M2.7, 6 tools (logística + finanzas + búsqueda + clientes + corridas + manual), anti-alucinación, audit log, rate limit 30/h.
+
+### Pendiente
+
+- Fase 2.4 (inversión polaridad escrituras local FIRST).
+- Fase 2.5 (validador consistencia local vs Notion).
+- Fase 6 (scheduler automático, alertas tempranas, responsive mobile).
+- Fase 7 (carrier adicional Guatex, roles diferenciados, evaluación PostgreSQL).
 
 ### Producción
 
@@ -83,6 +105,7 @@ ssh -i ~/.ssh/vaecos_vps vaecos@2.24.206.197 "sudo systemctl stop vaecos && \
 - Reusa el motor de v0.2 directamente (sin reescribir nada del business engine) y el `DashboardRepository` de v0.3.
 - Arrancable con `python v0.4/server.py` o `iniciar_v04.bat`.
 - **Fase 2 entregada (2.1, 2.2, 2.3 + archive/unarchive)**: el motor lee guías desde tabla local; la operadora puede crear, editar campos y archivar/restaurar guías desde la app sin tocar Notion ni Excel. Pendiente: 2.4 (inversión polaridad de escrituras) y 2.5 (validador de consistencia).
+- **Fase 3 entregada (2026-05-14)**: analytics rediseñado con KPIs operativos + manual de métricas + tooltips, paginación en 7 vistas, export Effi a xlsx, UI refresh integral (crumbs, home rediseñado, filterbar pattern unificado en 5 páginas, forms vanilla CSS con `appearance: none` para selects/checkboxes/dates). Score de cliente retirado del alcance.
 - Estructura:
   ```
   v0.4/

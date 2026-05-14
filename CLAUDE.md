@@ -72,6 +72,9 @@ New rules should be tested with `/rules/preview?guia=<guide>` before saving.
 `v0.2/data/vaecos_tracking.db` (WAL mode). Tables:
 - **Engine (v0.2)**: `runs`, `run_results`, `tracking_status_events`, `tracking_novelty_events`, `rules`, `rule_history`
 - **App (v0.4)**: `users`, `import_log`, `guides`, `guide_notes`, `guide_edits`
+- **Effi bot**: `effi_catalog`, `effi_orders`, `effi_audit_log`, `effi_review_queue`
+- **Finanzas (Fase 5.1)**: `fin_movements` (monto en centavos, multi-moneda con default COP), `fin_categories` (color hex + activa), `fin_movement_categories` (M:N, FK CASCADE para movements / RESTRICT para categories)
+- **IA conversacional (Fase 5.2)**: `ai_conversations` (1 por usuario activa), `ai_messages` (role IN user/assistant/tool, content + tool_name + tool_args_json), `ai_audit_log` (user_id, tool_name, args, latency_ms, ok/error)
 
 `run_results` was extended with columns `carrier`, `notas_operador`, `telefono` (all idempotent ALTERs in `db.py`).
 
@@ -79,13 +82,15 @@ Migrations are idempotent functions in `v0.2/vaecos_v02/storage/db.py` called on
 
 ### v0.4 web server (current)
 
-Flask app factory in `v0.4/app/__init__.py`. Six blueprints:
+Flask app factory in `v0.4/app/__init__.py`. Eight blueprints:
 - `auth` — `/login`, `/logout`, `/change-password`, `/mi-cuenta` (perfil + cambio de password en una sola página)
 - `dashboard` — 14 GETs migrated from v0.3 + `/all-guides`, `/search`, `/guides/new` (crear), `/guides/<g>/notes`, `/guides/<g>/state`, `/guides/<g>/fields` (Phase 2.2), `/guides/<g>/archive` y `/guides/<g>/unarchive` (Phase 2.3)
 - `runs` — `/run/new`, `/run/progress/<token>`, `/runs/<id>/export/effi`, `/sync/notion`, `/sync/progress/<token>`
 - `import_guides` — `/import` (upload + preview + confirm; confirm creates Notion pages)
 - `users` — `/users`, `/users/<id>/{toggle,delete,reset-password}` (admin-only)
 - `effi` (Creador guías) — `/effi` dashboard, `/effi/catalog` CRUD (admin), `/effi/queue` cola humana, `/effi/audit` historial, `/effi/run/manual` trigger + `/effi/run/progress/<token>` polling JSON.
+- `finanzas` (Fase 5.1) — `/finanzas` listado con filtros + paginación, `/finanzas/new`, `/finanzas/<id>/edit`, `/finanzas/<id>/delete` (admin), `/finanzas/analytics` con export `.xlsx`, `/finanzas/categorias` CRUD (admin).
+- `ai` (Fase 5.2) — `POST /ai/chat` (rate-limited 30/h por user_id), `GET /ai/chat/history` (hidrata widget al abrir), `POST /ai/chat/clear`. Widget flotante incluido en `base.html` (visible si hay sesión).
 
 v0.4 imports v0.2 (engine) and v0.3 (`DashboardRepository`, charts) directly via `sys.path.insert`. Bootstrap admin is seeded on first start from `V04_BOOTSTRAP_EMAIL` / `V04_BOOTSTRAP_PASSWORD`.
 
@@ -144,6 +149,14 @@ SMTP_USER=
 SMTP_PASSWORD=
 SMTP_FROM=
 SMTP_USE_SSL=false                         # true para puerto 465
+EFFI_DAILY_DIGEST_ONLY=true                # producción: digest 22:00 GT en vez de email por corrida
+
+# IA (validador direcciones + asistente conversacional)
+MINIMAX_API_KEY=                           # requerido para bot Effi + asistente IA
+MINIMAX_MODEL=MiniMax-M2.7
+MINIMAX_BASE_URL=https://api.minimax.io/v1
+MINIMAX_TIMEOUT_SECONDS=30
+AI_ADDRESS_VALIDATION=auto                 # auto = on si hay API key
 ```
 
 ### Módulo Creador guías (Effi)
@@ -179,6 +192,42 @@ tail -f /opt/vaecos/logs/effi.log
 ```
 
 Recovery cuando expira sesión: el bot manda email vía notifier (si está configurado) y deja un audit log de tipo `health_check` fallido. Renovar localmente con `effi_login.py` y subir el nuevo `effi-session.json` al VPS con scp.
+
+### Módulo Finanzas (Fase 5.1)
+
+Libro de movimientos en COP con multi-categoría. Sin sync con Notion — Notion fue la fuente del histórico (one-shot import) pero ya no es fuente activa.
+
+- Schema: ver "SQLite schema" arriba (3 tablas).
+- Repository: `v0.4/app/finanzas/repository.py` — FK CASCADE/RESTRICT requiere `PRAGMA foreign_keys = ON` en cada conexión (incluido en `_connect()`).
+- Monto siempre en **centavos INTEGER** (no REAL) para evitar errores de float con datos contables.
+- Routes: `v0.4/app/finanzas/routes.py` con CRUD + analytics + export `.xlsx` + catálogo admin.
+- Permisos: todos los users crean movimientos; solo creador o admin editan; solo admin borra. Solo admin gestiona catálogo de categorías.
+
+Migración inicial del histórico Notion:
+```powershell
+python scripts/import_finanzas_notion.py --csv <path> --apply
+```
+Idempotente (`external_ref` UNIQUE como hash determinista por fila). Re-correr no duplica.
+
+### Módulo IA conversacional (Fase 5.2)
+
+Widget flotante incluido en `base.html` (visible si hay sesión activa). Backend en `v0.4/app/ai/`:
+- `agent.py` — loop tool-use iterativo (max 5 iteraciones), system prompt anti-alucinación, parser robusto del JSON que tolera `<think>...</think>` de MiniMax M2.7.
+- `tools.py` — 6 tools registradas (logística, finanzas, búsqueda, top clientes, corridas, manual). Cada tool valida args defensivamente y devuelve `{"error": ...}` en lugar de raise.
+- `manual.py` — knowledge base del aplicativo en 13 tópicos con scoring por keywords. Editable directo en código.
+- `repository.py` — persistencia de `ai_conversations`, `ai_messages`, `ai_audit_log` con FK CASCADE/RESTRICT.
+- `routes.py` — endpoints `/ai/chat`, `/ai/chat/history`, `/ai/chat/clear`. Rate limit 30/h por user_id via Flask-Limiter.
+
+Tools devuelven estructuras compactas (no rows crudas) para minimizar tokens. Si una tool devuelve `{"error": ...}`, el modelo NO la re-llama con los mismos args (regla explícita en system prompt).
+
+Para agregar una nueva tool:
+1. Implementar `tool_<nombre>(db_path, args)` en `tools.py`.
+2. Registrar en `TOOL_REGISTRY` con `description` y `args_schema`.
+3. El system prompt levanta la descripción automáticamente vía `tools_for_prompt()`.
+
+Para extender el manual del asistente:
+1. Agregar entrada a `HELP_TOPICS` en `manual.py` con `title`, `keywords` (aliases) y `content` (markdown).
+2. La IA lo recoge automáticamente — no hay que tocar prompts.
 
 ### Adding a new carrier
 
@@ -218,6 +267,13 @@ Recovery cuando expira sesión: el bot manda email vía notifier (si está confi
 | `v0.4/app/runs/jobs.py` | Background job pattern (threads + token + polling) for runs and syncs |
 | `v0.4/app/import_guides/parser.py` | Excel parser (NFKD-normalized headers, DPI digits, contenido cantidad+producto) |
 | `v0.4/app/notion_helpers.py` | Cached Estado novedad options for editor dropdowns (TTL 5 min) |
+| `v0.4/app/finanzas/repository.py` | **Phase 5.1** — CRUD finanzas con FK `PRAGMA foreign_keys = ON`, montos en centavos INTEGER, M:N categorías |
+| `v0.4/app/finanzas/routes.py` | **Phase 5.1** — `/finanzas`, `/finanzas/new`, `/finanzas/<id>/edit`, `/finanzas/analytics`, `/finanzas/categorias` (admin) |
+| `v0.4/app/ai/agent.py` | **Phase 5.2** — Agent loop tool-use con MiniMax M2.7. System prompt anti-alucinación. Parser de `<think>` blocks. Max 5 iteraciones |
+| `v0.4/app/ai/tools.py` | **Phase 5.2** — 6 tools registradas: logística, finanzas, búsqueda, top clientes, corridas, manual del aplicativo |
+| `v0.4/app/ai/manual.py` | **Phase 5.2** — Knowledge base del aplicativo en 13 tópicos, scoring por keywords. Editar para extender el manual |
+| `v0.4/app/ai/routes.py` | **Phase 5.2** — `POST /ai/chat` (rate-limited 30/h), `GET /ai/chat/history`, `POST /ai/chat/clear` |
+| `scripts/import_finanzas_notion.py` | **Phase 5.1** — Migración one-shot del histórico financiero de Notion a SQLite. Idempotente via hash determinista |
 
 ## Operational notes
 

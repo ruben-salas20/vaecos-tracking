@@ -17,6 +17,7 @@ vaecos-v*.zip
 v0.2/v0.2/
 v0.2/tests/_debug_post.py
 docs/db-operadora/
+docs/notion-export/
 
 # Playwright CLI temp artifacts (testing browser sessions)
 .playwright-cli/

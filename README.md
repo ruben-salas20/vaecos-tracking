@@ -1,18 +1,22 @@
 # Seguimiento VAECOS
 
-VAECOS Seguimiento es la plataforma logística interna de VAECOS Guatemala. Cumple dos funciones:
+VAECOS Seguimiento es la plataforma logística + financiera interna de VAECOS Guatemala. Cumple cuatro funciones:
 
 1. **Seguimiento de guías**: reconcilia el estado de las guías en Notion contra lo que reporta el transportista (Effi), aplica reglas configurables, y actualiza Notion automáticamente.
 2. **Creador de guías (Effi)**: convierte órdenes de venta confirmadas en remisiones + guías CARGO EXPRESO en el ERP de Effi sin intervención manual. Incluye clasificador determinista + IA (MiniMax) para validar direcciones, cola humana para excepciones, y digest por email.
+3. **Módulo financiero**: libro de movimientos en COP (ingresos / egresos / transferencias), categorías multi-tag, analytics con KPIs, export Excel.
+4. **Asistente IA conversacional**: widget flotante con MiniMax M2.7 que responde preguntas operativas, financieras y del manual de uso. 6 tools con function calling, cero alucinaciones, audit log completo.
 
 Aplicación web multi-usuario en producción en `https://app.vaecos.com`.
 
-## Estado actual (2026-05-13)
+## Estado actual (2026-05-14)
 
 - **Producción**: `https://app.vaecos.com` — Hostinger VPS + Caddy (TLS automático) + systemd + Waitress
-- **Interfaz principal**: v0.4 (Flask + auth + dark mode)
-- **Tracking**: Fase 2.3 entregada (motor lee desde local, edición de campos, alta/archivo/restauración). Pendiente 2.4 (inversión de polaridad).
-- **Creador guías Effi**: módulo completo end-to-end (catálogo con aliases, classifier, address regex+IA, bot Playwright, cola humana, audit log, trigger UI/cron, email digest HTML).
+- **Interfaz principal**: v0.4 (Flask + auth + dark mode + UI refresh completo + finanzas + IA)
+- **Tracking** (Fase 2 — parcial): motor lee desde local, edición de campos, alta/archivo/restauración entregados. Pendiente 2.4 (inversión de polaridad).
+- **Creador guías Effi** (Fase 3): módulo completo end-to-end (catálogo con aliases, classifier, address regex+IA, bot Playwright, cola humana, audit log, trigger UI/cron, digest diario por email, auto-relogin).
+- **Inteligencia operativa + UI refresh** (Fase 4 — 2026-05-14): analytics rediseñado con KPIs operativos, paginación en 7 vistas, export Excel, crumbs, filterbar pattern unificado, forms vanilla CSS modernizados.
+- **Módulo financiero + Asistente IA** (Fase 5 — 2026-05-14): 445 movimientos importados desde Notion, CRUD completo con multi-categoría, analytics + export. Widget IA con 6 tools (logística + finanzas + búsqueda + clientes + corridas + manual del aplicativo), tool use iterativo, anti-alucinación validada, rate limit 30/h, audit log.
 - **Reglas del motor**: CRUD completo admin-only (`/rules`) con historial de auditoría.
 
 ## Arquitectura por capas
@@ -82,10 +86,39 @@ python v0.2/cli.py tui                              # interfaz curses
 - **Trigger manual desde UI** (`/effi/run/manual`) o **cron en VPS** cada hora.
 - **Email digest HTML** mobile-first con resumen consolidado (KPIs + listas por categoría) — solo cuando hay novedades reales.
 
+### Módulo financiero (Fase 5.1)
+
+- **Movimientos** (`/finanzas`): tabla en COP con filtros por año (default actual), mes, tipo (ingreso/egreso/transferencia), categoría y búsqueda. Paginación 50/página. KPIs en cabecera (ingresos, egresos, balance, count).
+- **CRUD** (`/finanzas/new`, `/finanzas/<id>/edit`, `/finanzas/<id>/delete`): formulario con date picker, monto formato colombiano (`1.234.567,89`), multi-select de categorías, observación, vinculación opcional a guía. Audit trail con `creado_por` / `actualizado_por`. Permisos: todos crean, creador o admin editan, solo admin borra.
+- **Multi-categoría real**: un movimiento puede tener N categorías (ej. "DEUDA + PUBLICIDAD" en un pago de tarjeta).
+- **Analytics** (`/finanzas/analytics`): KPIs del período + top categorías + evolución mensual + export a `.xlsx`.
+- **Catálogo de categorías** (`/finanzas/categorias`, admin-only): CRUD inline, color picker, toggle activar/desactivar. No se pueden borrar (FK RESTRICT protege históricos).
+- **Migración inicial**: histórico de Notion importado vía `scripts/import_finanzas_notion.py` (idempotente, hash determinista por fila).
+
+### Asistente IA conversacional (Fase 5.2)
+
+Widget flotante en esquina inferior derecha, disponible en cualquier pantalla con sesión activa.
+
+- **Stack**: MiniMax M2.7 (OpenAI-compatible) — reusa la integración del validador de direcciones del bot Effi.
+- **Tool use iterativo**: el modelo llama funciones tipadas (no SQL crudo) y razona sobre los resultados.
+- **6 tools expuestas**:
+  - `get_logistic_summary(period)` — KPIs guías por período
+  - `get_finanzas_summary(period, tipo)` — ingresos/egresos/balance + top categorías + evolución mensual
+  - `search_guides(query, limit)` — búsqueda por número, cliente o teléfono
+  - `get_top_clients(period, limit)` — ranking
+  - `list_recent_runs(limit)` — últimas corridas
+  - `get_app_help(topic)` — manual de uso (13 tópicos: overview, guías, estados, corridas, reglas, importar, effi, finanzas, analytics, buscar, atención, usuarios, ia, deploy)
+- **Anti-alucinación**: system prompt con regla explícita; si no tiene la data, dice "no sé" honestamente y ofrece alternativa.
+- **Historial persistente** por usuario (últimos 20 turnos, botón "limpiar").
+- **Audit log**: cada tool call queda en `ai_audit_log` con args, latency, ok/error.
+- **Rate limit**: 30 mensajes/hora por user (Flask-Limiter por user_id).
+- **Endpoints**: `POST /ai/chat`, `GET /ai/chat/history`, `POST /ai/chat/clear`.
+
 ### Admin
 
 - `/users`: crear, activar/desactivar, resetear contraseñas, asignar rol admin/user.
 - `/effi/catalog`: gestión del catálogo de productos VAECOS para el clasificador.
+- `/finanzas/categorias`: gestión del catálogo de categorías financieras.
 - `/rules`: gestión de reglas del motor de tracking.
 
 ## Flujo de datos (post Fase 2.1)
@@ -146,11 +179,12 @@ EFFI_SESSION_PATH=v0.2/data/effi-session.json
 EFFI_HEADLESS=true
 EFFI_BASE_URL=https://effi.com.co
 
-# IA validación de direcciones (MiniMax, OpenAI-compat)
+# IA (validación de direcciones + asistente conversacional, MiniMax, OpenAI-compat)
 AI_ADDRESS_VALIDATION=auto                # auto = on si hay API key
-MINIMAX_API_KEY=
+MINIMAX_API_KEY=                           # requerido para el bot Effi + asistente IA
 MINIMAX_MODEL=MiniMax-M2.7
 MINIMAX_BASE_URL=https://api.minimax.io/v1
+MINIMAX_TIMEOUT_SECONDS=30                 # timeout por llamada al modelo (chat)
 
 # Notificaciones email (opcional)
 NOTIFY_EMAIL=                              # destinatario(s), separados por coma
@@ -160,6 +194,7 @@ SMTP_USER=
 SMTP_PASSWORD=
 SMTP_FROM=
 SMTP_USE_SSL=false
+EFFI_DAILY_DIGEST_ONLY=true                # producción: solo digest diario 22:00 GT, sin email por corrida
 ```
 
 ## Scripts CLI del módulo Effi
@@ -185,6 +220,20 @@ python scripts/effi_test_email.py
 
 # Diagnóstico de MiniMax
 python scripts/effi_ai_debug.py
+
+# Digest diario por email (cron: 0 3 * * * en VPS = 21:00 GT)
+python scripts/effi_daily_digest.py --hours 24
+python scripts/effi_daily_digest.py --hours 168 --dry-run    # preview semana
+```
+
+## Scripts CLI del módulo Finanzas
+
+```powershell
+# Importar histórico desde Notion (dry-run primero, después --apply)
+python scripts/import_finanzas_notion.py --csv "docs/notion-export/finanzas-2025.csv" --csv "docs/notion-export/finanzas-2026.csv"
+python scripts/import_finanzas_notion.py --csv "docs/notion-export/finanzas-2025.csv" --csv "docs/notion-export/finanzas-2026.csv" --apply
+
+# Re-correr es idempotente — usa external_ref UNIQUE (hash determinista por fila)
 ```
 
 ## Producción — VPS
