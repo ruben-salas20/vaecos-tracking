@@ -62,9 +62,10 @@ def line_chart(
             f'text-anchor="middle">{escape(short)}</text>'
         )
 
+    title_html = f'<div class="chart-title">{escape(title)}</div>' if title else ""
     return (
         '<div class="chart-wrap">'
-        f'<div class="chart-title">{escape(title)}</div>'
+        f'{title_html}'
         f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
         'preserveAspectRatio="xMidYMid meet" role="img">'
         + "".join(grid_y)
@@ -151,9 +152,10 @@ def stacked_bar_chart(
         )
         lx += 14 + len(label) * 6 + 14
 
+    title_html = f'<div class="chart-title">{escape(title)}</div>' if title else ""
     return (
         '<div class="chart-wrap">'
-        f'<div class="chart-title">{escape(title)}</div>'
+        f'{title_html}'
         f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
         'preserveAspectRatio="xMidYMid meet" role="img">'
         + "".join(grid_y)

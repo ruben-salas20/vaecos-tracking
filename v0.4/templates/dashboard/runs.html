@@ -1,32 +1,36 @@
 {% extends "base.html" %}
-{% from "macros.html" import mode_badge %}
+{% from "macros.html" import mode_badge, crumbs %}
 {% from "partials/_pagination.html" import pagination_nav %}
 {% block title %}Corridas{% endblock %}
 {% block content %}
+{{ crumbs(['Inteligencia', 'Historial corridas']) }}
 <div class="page-head">
   <div class="page-title-block">
-    <div class="page-title">Corridas</div>
-    <div class="page-sub">Historial completo de ejecuciones almacenadas en SQLite.</div>
+    <div class="page-title">Historial de corridas</div>
+    <div class="page-sub">Ejecuciones almacenadas en SQLite — ordenadas por más recientes primero.</div>
   </div>
   <div class="page-actions">
-    <a href="{{ url_for('dashboard.run_new') }}" class="btn primary">Nueva corrida</a>
     <a href="{{ url_for('dashboard.home') }}" class="btn">Volver al resumen</a>
+    <a href="{{ url_for('dashboard.run_new') }}" class="btn brand">Nueva corrida</a>
   </div>
 </div>
 
 <div class="panel" style="margin-bottom:16px;">
   <form class="filter-form" method="get" action="{{ url_for('dashboard.runs') }}">
-    <label>
-      Modo
-      <select name="mode">
+    <div class="filter-group">
+      <span class="filter-group-label">Modo</span>
+      <select class="input" name="mode" style="min-width:140px;">
         <option value="">Todos</option>
         <option value="dry-run" {% if mode_filter == 'dry-run' %}selected{% endif %}>dry-run</option>
         <option value="apply" {% if mode_filter == 'apply' %}selected{% endif %}>apply</option>
       </select>
-    </label>
-    <div style="display:flex;gap:6px;align-items:flex-end;">
-      <button type="submit" class="btn primary">Filtrar</button>
-      <a href="{{ url_for('dashboard.runs') }}" class="btn">Limpiar</a>
+    </div>
+    <div class="filter-group">
+      <span class="filter-group-label" style="visibility:hidden;">_</span>
+      <div class="filter-row">
+        <button type="submit" class="btn primary">Filtrar</button>
+        <a href="{{ url_for('dashboard.runs') }}" class="btn">Limpiar</a>
+      </div>
     </div>
   </form>
   <div class="panel-body flush">

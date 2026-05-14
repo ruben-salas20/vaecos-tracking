@@ -13,6 +13,34 @@ _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
 
 
+def _try_build_notion_provider():
+    """Construye un NotionProvider desde las V04Settings si están disponibles.
+
+    Devuelve None si faltan credenciales — el runner skipea el sync a Notion
+    pero la creación en Effi sigue procediendo normalmente.
+    """
+    try:
+        from app.config import load_settings as load_v04_settings  # type: ignore
+        from vaecos_v02.providers.notion_provider import NotionProvider  # type: ignore
+    except ImportError:
+        return None
+    from pathlib import Path
+    try:
+        v04 = load_v04_settings(Path(__file__).resolve().parents[2])  # .../v0.4
+    except Exception:
+        return None
+    if not getattr(v04, "notion_api_key", "") or not getattr(v04, "notion_data_source_id", ""):
+        return None
+    try:
+        return NotionProvider(
+            api_key=v04.notion_api_key,
+            notion_version=v04.notion_version,
+            data_source_id=v04.notion_data_source_id,
+        )
+    except Exception:
+        return None
+
+
 def create_job(*, mode: str, limit: int = 0, only_order: int | None = None) -> str:
     token = secrets.token_hex(16)
     with _jobs_lock:
@@ -55,7 +83,11 @@ def dispatch_effi_run(token: str, *, apply: bool, limit: int, only_order: int | 
                 _update(token, status="error", error="No hay sesión guardada. Corré 'scripts/effi_login.py'.")
                 return
 
-            runner = EffiRunner(settings, dry_run=not apply)
+            # Wire opcionalmente el NotionProvider: si hay credenciales, el bot
+            # crea la guía también en Notion automáticamente tras crearla en Effi.
+            notion_provider = _try_build_notion_provider()
+
+            runner = EffiRunner(settings, dry_run=not apply, notion_provider=notion_provider)
             if not runner.catalog:
                 _update(token, status="error", error="Catálogo vacío. Cargá productos en /effi/catalog.")
                 return
@@ -64,8 +96,16 @@ def dispatch_effi_run(token: str, *, apply: bool, limit: int, only_order: int | 
             # no espera ver un navegador abriéndose en su pantalla.
             with EffiBot(settings, headless_override=True) as bot:
                 if not bot.health_check():
-                    _update(token, status="error", error="Sesión Effi expirada — renová effi-session.json.")
-                    return
+                    _update(token, current_order=None, total=0, current=0)
+                    print("⚠ Sesión Effi expirada — intentando re-login automático...")
+                    if not (bot.try_auto_login() and bot.health_check()):
+                        _update(
+                            token,
+                            status="error",
+                            error="Sesión Effi expirada y auto-login falló — renová effi-session.json con scripts/effi_login.py.",
+                        )
+                        return
+                    print("✓ Re-login automático exitoso.")
 
                 def on_progress(i, total, orden_id):
                     _update(token, current=i, total=total, current_order=orden_id)

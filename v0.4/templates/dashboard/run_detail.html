@@ -4,22 +4,23 @@
 {% block title %}Corrida #{{ run_id }}{% endblock %}
 {% block content %}
 {% if not run %}
+<div class="crumbs"><a href="{{ url_for('dashboard.runs') }}">Historial</a><span class="sep">/</span><span>#{{ run_id }}</span></div>
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Corrida no encontrada</div>
     <div class="page-sub">No existe la corrida {{ run_id }}.</div>
   </div>
 </div>
-<a href="{{ url_for('dashboard.runs') }}" class="btn">Volver</a>
+<a href="{{ url_for('dashboard.runs') }}" class="btn">Volver al historial</a>
 {% else %}
 
+<div class="crumbs">
+  <a href="{{ url_for('dashboard.runs') }}">Historial</a>
+  <span class="sep">/</span>
+  <span>Corrida #{{ run_id }}</span>
+</div>
 <div class="page-head">
   <div class="page-title-block">
-    <div class="crumbs">
-      <a href="{{ url_for('dashboard.runs') }}">Corridas</a>
-      <span class="sep">/</span>
-      <span>#{{ run_id }}</span>
-    </div>
     <div class="page-title">Corrida #{{ run_id }}</div>
     <div class="page-sub">
       {{ run['started_at'] | fmt_ts }} · {{ mode_badge(run['mode']) }}
@@ -28,9 +29,9 @@
     </div>
   </div>
   <div class="page-actions">
-    <a href="{{ url_for('dashboard.run_new') }}" class="btn primary">Nueva corrida</a>
     <a href="{{ url_for('runs.export_effi', run_id=run_id) }}" class="btn">Descargar para Effi</a>
-    <a href="{{ url_for('dashboard.runs') }}" class="btn">Volver a corridas</a>
+    <a href="{{ url_for('dashboard.runs') }}" class="btn">Volver al historial</a>
+    <a href="{{ url_for('dashboard.run_new') }}" class="btn brand">Nueva corrida</a>
   </div>
 </div>
 
@@ -40,18 +41,21 @@
 
 <div class="panel" style="margin-bottom:16px;">
   <form class="filter-form" method="get" action="{{ url_for('dashboard.run_detail', run_id=run_id) }}">
-    <label>
-      Resultado
-      <select name="resultado">
+    <div class="filter-group">
+      <span class="filter-group-label">Resultado</span>
+      <select class="input" name="resultado" style="min-width:180px;">
         <option value="">Todos</option>
         {% for opt in ['changed', 'unchanged', 'manual_review', 'parse_error', 'error'] %}
         <option value="{{ opt }}" {% if resultado_filter == opt %}selected{% endif %}>{{ opt }}</option>
         {% endfor %}
       </select>
-    </label>
-    <div style="display:flex;gap:6px;align-items:flex-end;">
-      <button type="submit" class="btn primary">Filtrar</button>
-      <a href="{{ url_for('dashboard.run_detail', run_id=run_id) }}" class="btn">Limpiar</a>
+    </div>
+    <div class="filter-group">
+      <span class="filter-group-label" style="visibility:hidden;">_</span>
+      <div class="filter-row">
+        <button type="submit" class="btn primary">Filtrar</button>
+        <a href="{{ url_for('dashboard.run_detail', run_id=run_id) }}" class="btn">Limpiar</a>
+      </div>
     </div>
   </form>
   <div class="panel-body flush">

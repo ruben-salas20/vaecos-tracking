@@ -1,12 +1,17 @@
 {% extends "base.html" %}
 {% from "macros.html" import result_pill, carrier_badge, mode_badge, notas_cell, guide_notes_panel %}
-{% block title %}Historial — {{ guia }}{% endblock %}
+{% block title %}Guía — {{ guia }}{% endblock %}
 {% block content %}
+<div class="crumbs">
+  <a href="{{ url_for('dashboard.all_guides') }}">Todas las guías</a>
+  <span class="sep">/</span>
+  <span class="mono">{{ guia }}</span>
+</div>
 <div class="page-head">
   <div class="page-title-block">
-    <div class="page-title">Historial — {{ guia }}</div>
+    <div class="page-title">Guía <span class="mono" style="font-size:20px;">{{ guia }}</span></div>
     <div class="page-sub">
-      Seguimiento histórico de una guía a través de las corridas almacenadas.
+      Seguimiento histórico a través de las corridas almacenadas.
       {% if telefono %}
       · DPI / Teléfono:
       <a href="{{ url_for('dashboard.search', q=telefono) }}" class="mono">{{ telefono }}</a>
@@ -23,7 +28,7 @@
           onsubmit="return confirm('¿Correr esta guía y aplicar cambios a Notion?')">
       <input type="hidden" name="guides" value="{{ guia }}">
       <input type="hidden" name="mode" value="apply">
-      <button type="submit" class="btn primary">Correr esta guía (apply)</button>
+      <button type="submit" class="btn brand">Aplicar</button>
     </form>
     <a href="{{ url_for('dashboard.runs') }}" class="btn">Ver corridas</a>
   </div>

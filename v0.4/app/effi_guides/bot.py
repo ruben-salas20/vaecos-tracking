@@ -31,6 +31,7 @@ from playwright.sync_api import (
     Page,
     Playwright,
     TimeoutError as PlaywrightTimeoutError,
+    Error as PlaywrightError,
 )
 
 from .classifier import OrderProduct, ProcessingPlan
@@ -117,6 +118,33 @@ def compute_fecha_entrega(today: date | None = None, business_days: int = 3) -> 
     return d.strftime("%Y-%m-%d")
 
 
+_RE_NOMBRE_LINE = re.compile(r"(?i)^\s*nombre\s*:\s*(.+?)\s*$")
+_RE_PREFIX_LINE = re.compile(r"(?i)^\s*(dpi|tel[eé]fono|direcci[oó]n|email|correo|nit)\s*:")
+_RE_CARGO_TRACKING = re.compile(r"\bB\d{6,}-\d+\b")
+
+
+def _extract_name(cell_text: str) -> str:
+    """Extrae el nombre del cliente de la celda multi-línea.
+
+    Estrategia:
+      1. Si aparece línea explícita 'Nombre: X', devolver X.
+      2. Si no, primera línea no vacía que NO empiece con prefijo conocido
+         (DPI:, Teléfono:, Dirección:, Email:, NIT:).
+    """
+    if not cell_text:
+        return ""
+    for raw_line in cell_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        m = _RE_NOMBRE_LINE.match(line)
+        if m:
+            return m.group(1).strip()
+        if not _RE_PREFIX_LINE.match(line):
+            return line
+    return cell_text.strip()
+
+
 def _extract_phone(cell_text: str) -> str:
     """Extrae teléfono. Prefiere la línea explícita 'Teléfono:'; si no existe,
     cae al primer bloque de 8 dígitos contiguos (formato GT).
@@ -194,6 +222,13 @@ class EffiBot:
         self._context = self._browser.new_context(storage_state=storage_state)
         self._context.set_default_timeout(self.settings.navigation_timeout_ms)
         self._page = self._context.new_page()
+
+        # Auto-aceptar diálogos nativos del navegador (alert / confirm / prompt).
+        # Effi a veces muestra confirm("¿Está seguro?") al crear remisión o guía;
+        # sin handler Playwright las dismisses por default y el submit se cancela
+        # silenciosamente, dejando "Pre-existing=N, current=N" en _read_new_id.
+        self._page.on("dialog", lambda d: d.accept())
+
         return self
 
     def __exit__(self, exc_type, exc, tb):
@@ -237,6 +272,100 @@ class EffiBot:
         except PlaywrightTimeoutError:
             return False
         return "/ingreso" not in self.page.url
+
+    def try_auto_login(self) -> bool:
+        """Intenta re-loguear usando EFFI_USERNAME/EFFI_PASSWORD del .env.
+
+        Caso de uso: el cron horario detecta sesión expirada y NO queremos esperar
+        que un humano renueve `effi-session.json` antes del próximo run. Si Effi
+        tiene reCAPTCHA activo o las creds están mal, esto falla y el caller debe
+        notificar como hoy.
+
+        En éxito: persiste el nuevo `storageState` vía `save_session()` y devuelve
+        True. En fallo: devuelve False sin tocar el archivo de sesión existente.
+        """
+        if not self.settings.username or not self.settings.password:
+            print("  [auto-login] EFFI_USERNAME/EFFI_PASSWORD no configurados — skip")
+            return False
+
+        try:
+            self.page.goto(self.settings.login_url, wait_until="domcontentloaded")
+        except Exception as e:
+            print(f"  [auto-login] goto login falló: {e}")
+            return False
+
+        # Llenar credenciales con selectores típicos.
+        filled_user = False
+        for sel in ("input[name='email']", "input[type='email']", "input[name='usuario']", "#email"):
+            try:
+                loc = self.page.locator(sel)
+                if loc.count() > 0:
+                    loc.first.fill(self.settings.username)
+                    filled_user = True
+                    break
+            except Exception:
+                continue
+        filled_pass = False
+        for sel in ("input[name='password']", "input[type='password']", "#password"):
+            try:
+                loc = self.page.locator(sel)
+                if loc.count() > 0:
+                    loc.first.fill(self.settings.password)
+                    filled_pass = True
+                    break
+            except Exception:
+                continue
+
+        if not (filled_user and filled_pass):
+            print(f"  [auto-login] no pude llenar credenciales (user={filled_user}, pass={filled_pass})")
+            return False
+
+        # Submit.
+        clicked = False
+        for sel in (
+            "button[type='submit']",
+            "button:has-text('Ingresar')",
+            "button:has-text('Iniciar')",
+            "input[type='submit']",
+        ):
+            try:
+                loc = self.page.locator(sel)
+                if loc.count() > 0:
+                    loc.first.click()
+                    clicked = True
+                    break
+            except Exception:
+                continue
+        if not clicked:
+            print("  [auto-login] no encontré botón de submit")
+            return False
+
+        # Esperar redirect a /app/. Si reCAPTCHA bloquea, esto timeoutea.
+        try:
+            self.page.wait_for_url(f"{self.settings.base_url}/app/**", timeout=15000)
+        except PlaywrightTimeoutError:
+            current = self.page.url
+            print(f"  [auto-login] timeout esperando redirect — URL actual: {current}")
+            # Probable reCAPTCHA o credenciales rechazadas.
+            return False
+        except Exception as e:
+            print(f"  [auto-login] error inesperado: {e}")
+            return False
+
+        # Doble verificación: si por algún motivo seguimos en /ingreso, falló.
+        time.sleep(1.0)
+        if "/ingreso" in self.page.url:
+            print(f"  [auto-login] aún en /ingreso tras submit — URL: {self.page.url}")
+            return False
+
+        try:
+            self.save_session()
+            print(f"  [auto-login] ✓ sesión renovada y guardada en {self.settings.session_path}")
+            return True
+        except Exception as e:
+            print(f"  [auto-login] login OK pero save_session falló: {e}")
+            # La sesión activa funciona en memoria; el próximo cron tendrá que re-loguear.
+            return True
 
     # ── operaciones de alto nivel ───────────────────────────────────
 
@@ -371,12 +500,24 @@ class EffiBot:
              (modal se cierra y/o no aparece mensaje de error).
           4. Snapshot post-submit y diff para encontrar el nuevo ID.
         """
+        # 0) Idempotencia: si la orden YA tiene una remisión (caso típico tras un
+        #    rerun después de un fallo parcial), reusamos esa remisión en vez de
+        #    crear duplicado.
+        existing = self.find_remision_for_order(orden_id)
+        if existing is not None:
+            print(f"  [info] orden {orden_id} ya tiene remisión {existing} — reusando")
+            return existing
+
         # 1) Snapshot pre-submit.
         pre_existing = self._snapshot_table_ids(self.settings.remision_v_url)
 
         # 2) Abrir modal y submitear.
         self._open_remision_modal_for_order(orden_id)
         modal = self.page.locator("#modalCrear")
+        # Effi popula País/Depto/Ciudad/Dirección con cascading AJAX selects (jQuery).
+        # Sin esta espera, el submit llega con campos vacíos → error de validación
+        # intermitente ("El campo País del cliente, es obligatorio.", etc.).
+        self._wait_modal_ajax_settled(modal)
         self._click_submit_button(modal, "Crear y cerrar")
 
         # 3) Verificar que el submit REALMENTE tomó efecto.
@@ -384,15 +525,56 @@ class EffiBot:
 
         return self._read_new_id(self.settings.remision_v_url, pre_existing, "remision")
 
+    def _wait_modal_ajax_settled(self, modal, timeout_ms: int = 8000) -> None:
+        """Espera a que el AJAX cascading del modal de remisión termine.
+
+        Effi popula País/Depto/Ciudad/Dirección del cliente con cascading selects
+        (jQuery select2 + trigger('change')) después de que el modal ya es visible.
+        Si clickeamos "Crear y cerrar" antes de que termine la cascada, el form
+        submite con esos campos vacíos y el ERP devuelve errores de validación
+        intermitentes (caso confirmado: órdenes 5395, 5387, 5412 en 2026-05-13/14).
+
+        Considera settled cuando: jQuery.active === 0 Y el select de dirección_destinatario
+        tiene un value no vacío. Timeout safe: si no settled, deja submitear igual
+        — _post_submit_wait detecta el fallo y reporta el error real.
+        """
+        deadline = time.time() + (timeout_ms / 1000.0)
+        last_state = {"jq": None, "dir": None}
+        while time.time() < deadline:
+            try:
+                state = self.page.evaluate(
+                    """() => {
+                        const jq = window.jQuery;
+                        const jqActive = jq ? jq.active : 0;
+                        const dirSel = document.querySelector(
+                            '#modalCrear select[name="direccion_destinatario[]"]'
+                        );
+                        const dirVal = dirSel ? (dirSel.value || '') : '';
+                        return { jqActive, dirVal };
+                    }"""
+                )
+                last_state["jq"] = state.get("jqActive")
+                last_state["dir"] = state.get("dirVal")
+                if state.get("jqActive") == 0 and state.get("dirVal"):
+                    return
+            except Exception:
+                pass
+            time.sleep(0.25)
+        print(
+            f"  [warn] modal AJAX no settled tras {timeout_ms}ms "
+            f"(jQuery.active={last_state['jq']}, direccion={last_state['dir']!r}); "
+            "submitting anyway"
+        )
+
     def _post_submit_wait(self, modal, context_id: int, label: str) -> None:
         """Espera best-effort tras click "Crear y cerrar".
 
         Si el modal se cierra rápido, retorna inmediatamente.
-        Si no se cierra en 5s, registra warning + dumpea (para diagnóstico)
-        pero NO falla — el juez REAL de éxito es _read_new_id, que verifica
-        en la tabla destino si apareció un ID nuevo. Effi a veces deja el modal
-        visible aunque la operación interna haya succeded (caso confirmado en
-        producción 2026-05-13: orden 5378 → guía creada pero modal lingering).
+        Si no se cierra en 5s, busca errores de validación visibles:
+          - Si HAY errores → raise EffiBotError con el mensaje real (fail-fast).
+          - Si NO hay errores → dumpea y retorna; _read_new_id es el juez final
+            (Effi a veces succeeds dejando el modal abierto — caso confirmado
+            en producción 2026-05-13: orden 5378 → guía creada pero modal lingering).
         """
         time.sleep(1.5)
         try:
@@ -401,7 +583,7 @@ class EffiBot:
         except PlaywrightTimeoutError:
             pass
 
-        # Modal lingering — diagnóstico sin abortar.
+        # Modal lingering — recolectar errores visibles.
         try:
             diagnostic = modal.evaluate(
                 """
@@ -422,12 +604,23 @@ class EffiBot:
         except Exception:
             errors = []
 
+        # Errores visibles = señal clara de falla. Fail-fast con info útil.
+        if errors:
+            try:
+                self._dump_modal_html(modal, f"{label}_validation_error_{context_id}")
+            except Exception:
+                pass
+            raise EffiBotError(
+                f"{label} falló con errores de validación visibles en el modal: "
+                + " | ".join(errors[:3])
+            )
+
+        # Sin errores visibles pero modal lingering: posible éxito silencioso.
+        # Dejamos que _read_new_id decida verificando la tabla destino.
         print(
-            f"  [info] {label}: modal lingering tras submit "
-            f"(errores visibles: {errors or 'ninguno'}) — "
+            f"  [info] {label}: modal lingering sin errores visibles — "
             "validando éxito via tabla destino..."
         )
-        # Dump opcional para análisis futuro, sin abortar.
         try:
             self._dump_modal_html(modal, f"{label}_modal_lingered_{context_id}")
         except Exception:
@@ -454,6 +647,20 @@ class EffiBot:
             except PlaywrightTimeoutError:
                 # networkidle puede tardar en sitios con polling; seguimos.
                 pass
+            except PlaywrightError as e:
+                # net::ERR_ABORTED: el submit anterior aún tiene una navegación
+                # en vuelo que cancela nuestro goto. Esperamos a que se quiete
+                # y reintentamos en el próximo iter del loop.
+                msg = str(e)
+                if "ERR_ABORTED" in msg or "net::" in msg:
+                    print(f"  [warn] {label} goto abortado (intento {attempt + 1}/3): {msg.splitlines()[0]}")
+                    try:
+                        self.page.wait_for_load_state("domcontentloaded", timeout=5000)
+                    except Exception:
+                        pass
+                    time.sleep(1.0)
+                    continue
+                raise
             self.page.wait_for_selector("table tbody tr", timeout=self.settings.navigation_timeout_ms)
             time.sleep(1.0 + 0.5 * attempt)
 
@@ -477,10 +684,24 @@ class EffiBot:
         # Tras 3 intentos no detectamos un ID válido nuevo. Dumpeamos y abortamos.
         # NO usamos _first_row_id como fallback porque producía garbage (timestamps).
         self._dump_modal_html(self.page.locator("body"), f"no_new_{label}_id")
+
+        # Capturar contexto adicional para diagnóstico (URL/title delatan session expired).
+        try:
+            final_url = self.page.url
+        except Exception:
+            final_url = "?"
+        try:
+            page_title = self.page.title()
+        except Exception:
+            page_title = "?"
+        session_hint = " — sesión Effi parece expirada (redirect a login)" if "/ingreso" in final_url else ""
+
         raise EffiBotError(
             f"No pude detectar el {label} recién creado tras 3 intentos. "
             f"Pre-existing={len(pre_clean)}, último current={len(last_current)}. "
-            "Posiblemente la submit falló o la tabla no refrescó."
+            f"URL final: {final_url}, title: {page_title!r}.{session_hint} "
+            "Posibles causas: diálogo del navegador interceptado sin handler, "
+            "validación server-side sin error visible, tabla con caché, o sesión expirada."
         )
 
     def _snapshot_table_ids(self, table_url: str | None) -> set[int]:
@@ -506,6 +727,80 @@ class EffiBot:
         )
         return {i for i in ids if i < self._MAX_REASONABLE_ID}
 
+    def _find_id_in_table(
+        self,
+        table_url: str,
+        search_id: int,
+        id_col_index: int = 3,
+    ) -> int | None:
+        """Busca en una tabla de Effi una fila que referencia `search_id` y devuelve
+        el ID propio de esa fila (col `id_col_index + 1`, default col 4).
+
+        Estrategia: navega a la URL, escanea cada fila buscando `search_id` como
+        token exacto en CUALQUIER celda EXCEPTO la columna de ID propia. Sirve para:
+          - Encontrar remision que referencia orden_id (caso recovery post-fail).
+          - Encontrar guia que referencia remision_id (caso recovery post-fail).
+
+        Devuelve None si no encuentra match — la columna de referencia puede
+        variar y no queremos asumir su índice.
+        """
+        try:
+            self.page.goto(table_url, wait_until="networkidle", timeout=self.settings.navigation_timeout_ms)
+        except PlaywrightTimeoutError:
+            pass
+        except PlaywrightError as e:
+            if "ERR_ABORTED" in str(e) or "net::" in str(e):
+                try:
+                    self.page.wait_for_load_state("domcontentloaded", timeout=5000)
+                except Exception:
+                    pass
+                time.sleep(1.0)
+                try:
+                    self.page.goto(table_url, wait_until="domcontentloaded", timeout=self.settings.navigation_timeout_ms)
+                except Exception:
+                    return None
+            else:
+                raise
+        try:
+            self.page.wait_for_selector("table tbody tr", timeout=self.settings.navigation_timeout_ms)
+        except PlaywrightTimeoutError:
+            return None
+        time.sleep(1.0)
+
+        found = self.page.evaluate(
+            """
+            ({ searchId, idCol }) => {
+                const re = new RegExp('(^|\\\\D)' + searchId + '(\\\\D|$)');
+                const rows = Array.from(document.querySelectorAll('table tbody tr'));
+                for (const row of rows) {
+                    const cells = Array.from(row.querySelectorAll('td'));
+                    let hit = false;
+                    for (let i = 0; i < cells.length; i++) {
+                        if (i === idCol) continue;
+                        const txt = (cells[i].innerText || '').trim();
+                        if (txt && re.test(txt)) { hit = true; break; }
+                    }
+                    if (hit && cells[idCol]) {
+                        const idTxt = (cells[idCol].innerText || '').replace(/\\D/g, '');
+                        const id = parseInt(idTxt, 10);
+                        if (!isNaN(id) && id > 0 && id < 10000000) return id;
+                    }
+                }
+                return null;
+            }
+            """,
+            {"searchId": str(search_id), "idCol": id_col_index},
+        )
+        return int(found) if found else None
+
+    def find_remision_for_order(self, orden_id: int) -> int | None:
+        """Devuelve el remision_id que referencia a orden_id, o None si no existe."""
+        return self._find_id_in_table(self.settings.remision_v_url, orden_id)
+
+    def find_guia_for_remision(self, remision_id: int) -> int | None:
+        """Devuelve el guia_id que referencia a remision_id, o None si no existe."""
+        return self._find_id_in_table(self.settings.guia_transporte_url, remision_id)
+
     def create_guia(
         self,
         remision_id: int,
@@ -517,6 +812,13 @@ class EffiBot:
 
         Snapshot ANTES de empezar el flujo de creación para detectar el ID nuevo.
         """
+        # 0) Idempotencia: si la remisión YA tiene una guía (rerun tras fallo
+        #    parcial — típicamente ERR_ABORTED al leer el ID post-submit), reusamos.
+        existing = self.find_guia_for_remision(remision_id)
+        if existing is not None:
+            print(f"  [info] remisión {remision_id} ya tiene guía {existing} — reusando")
+            return existing
+
         # 1) Snapshot pre-submit de guías existentes.
         pre_existing = self._snapshot_table_ids(self.settings.guia_transporte_url)
 
@@ -554,7 +856,93 @@ class EffiBot:
         self._click_submit_button(modal, "Crear y cerrar")
         self._post_submit_wait(modal, remision_id, "create_guia")
 
-        return self._read_new_id(self.settings.guia_transporte_url, pre_existing, "guia")
+        # Path feliz: leer ID nuevo via diff. Si falla (ERR_ABORTED, networkidle
+        # timeout persistente, etc.), intentamos fallback explícito buscando guía
+        # que referencie esta remisión — la guía PUEDE haberse creado.
+        try:
+            return self._read_new_id(self.settings.guia_transporte_url, pre_existing, "guia")
+        except EffiBotError as primary_err:
+            print(
+                f"  [warn] _read_new_id falló: {primary_err}. "
+                f"Intentando fallback find_guia_for_remision({remision_id})..."
+            )
+            recovered = self.find_guia_for_remision(remision_id)
+            if recovered is not None:
+                print(f"  [info] recovered guia_id={recovered} via fallback")
+                return recovered
+            raise
+
+    def read_guia_row_data(self, guia_id: int) -> dict | None:
+        """Lee tracking number CARGO EXPRESO y valor a recaudar del row del
+        guia_id en /app/guia_transporte_v.
+
+        Returns dict con:
+          - "tracking": str | None  — formato 'B<digits>-<digits>'
+          - "valor_recaudar": float | None  — extraído de 'Recaudo: $NNN'
+
+        Devuelve None si no se encuentra el row. Los campos individuales pueden
+        ser None si el patrón específico no se encuentra en el row.
+        """
+        try:
+            self.page.goto(
+                self.settings.guia_transporte_url,
+                wait_until="networkidle",
+                timeout=self.settings.navigation_timeout_ms,
+            )
+        except PlaywrightTimeoutError:
+            pass
+        try:
+            self.page.wait_for_selector("table tbody tr", timeout=self.settings.navigation_timeout_ms)
+        except PlaywrightTimeoutError:
+            return None
+        time.sleep(1.0)
+
+        try:
+            row_text = self.page.evaluate(
+                """
+                (guiaIdStr) => {
+                    const target = String(guiaIdStr);
+                    const rows = document.querySelectorAll('table tbody tr');
+                    for (const row of rows) {
+                        const cells = Array.from(row.querySelectorAll('td'));
+                        if (cells.length < 4) continue;
+                        const idText = (cells[3].innerText || '').trim().replace(/\\D/g, '');
+                        if (idText !== target) continue;
+                        return cells.map(c => (c.innerText || '').trim()).join(' | ');
+                    }
+                    return null;
+                }
+                """,
+                guia_id,
+            )
+        except Exception:
+            return None
+        if not row_text:
+            return None
+
+        # Tracking: B + 6+ digits + '-' + digits
+        tracking_match = _RE_CARGO_TRACKING.search(row_text)
+        tracking = tracking_match.group(0) if tracking_match else None
+
+        # Valor a recaudar: 'Recaudo: $NNN' (con o sin decimales, con o sin $).
+        valor_match = re.search(
+            r"recaudo\s*:\s*\$?\s*([\d,]+(?:\.\d{1,2})?)",
+            row_text,
+            re.IGNORECASE,
+        )
+        valor_recaudar = None
+        if valor_match:
+            try:
+                valor_recaudar = float(valor_match.group(1).replace(",", ""))
+            except ValueError:
+                valor_recaudar = None
+
+        return {"tracking": tracking, "valor_recaudar": valor_recaudar}
+
+    # Alias retrocompatible — algunos callers viejos esperan solo el tracking.
+    def read_guia_tracking_number(self, guia_id: int) -> str | None:
+        data = self.read_guia_row_data(guia_id)
+        return data.get("tracking") if data else None
 
     # ── helpers internos ────────────────────────────────────────────
 

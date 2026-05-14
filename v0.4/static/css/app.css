@@ -459,3 +459,269 @@
 [data-theme="dark"] .app.sidebar-collapsed .nav-item.active:hover::before {
   border-right-color: #2a2a2a;
 }
+
+/* Banner success/danger variants (default banner = danger) */
+.btn-sm { padding: 4px 9px; font-size: 12px; }
+.banner.ok { background: var(--ok-tint); border-color: var(--ok-soft); }
+.banner.ok .banner-title, .banner.ok .banner-icon { color: var(--ok); }
+.banner.danger { background: var(--danger-tint); border-color: var(--danger-soft); }
+.banner.danger .banner-title, .banner.danger .banner-icon { color: var(--danger); }
+
+/* Home centro — two-column layout */
+.home-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+@media (max-width: 1100px) {
+  .home-grid { grid-template-columns: 1fr; }
+}
+
+/* ─────── Form controls con tokens (sin frameworks) ─────── */
+
+/* SELECT custom — quita el render nativo y dibuja chevron SVG */
+select.input,
+.filter-form select,
+.estado-edit-detail,
+.estado-quick-edit {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2376746F' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='4 6 8 10 12 6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  padding-right: 30px;
+  cursor: pointer;
+  /* Hereda .input styles para fondo, border, focus */
+}
+[data-theme="dark"] select.input,
+[data-theme="dark"] .filter-form select,
+[data-theme="dark"] .estado-edit-detail,
+[data-theme="dark"] .estado-quick-edit {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238B8A85' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='4 6 8 10 12 6'/%3E%3C/svg%3E");
+}
+select.input::-ms-expand { display: none; }
+
+/* CHECKBOX custom — sin React, solo appearance:none + ::after con SVG */
+input[type="checkbox"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+  flex-shrink: 0;
+  position: relative;
+  margin: 0;
+}
+input[type="checkbox"]:hover { border-color: var(--ink-2); }
+input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.08);
+  border-color: var(--ink);
+}
+[data-theme="dark"] input[type="checkbox"]:focus-visible {
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.08);
+}
+input[type="checkbox"]:checked {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3 8 7 12 13 4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 11px;
+}
+[data-theme="dark"] input[type="checkbox"]:checked {
+  background: #fff;
+  border-color: #fff;
+}
+[data-theme="dark"] input[type="checkbox"]:checked::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23131210' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3 8 7 12 13 4'/%3E%3C/svg%3E");
+}
+
+/* DATE inputs — esconde el icono nativo, dibuja calendar SVG custom */
+input[type="date"].input,
+input[type="time"].input,
+input[type="datetime-local"].input {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2376746F' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.5' y='3.5' width='11' height='10' rx='1.5'/%3E%3Cline x1='2.5' y1='6.5' x2='13.5' y2='6.5'/%3E%3Cline x1='5.5' y1='2' x2='5.5' y2='5'/%3E%3Cline x1='10.5' y1='2' x2='10.5' y2='5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 14px;
+  padding-right: 32px;
+  cursor: pointer;
+}
+[data-theme="dark"] input[type="date"].input,
+[data-theme="dark"] input[type="time"].input,
+[data-theme="dark"] input[type="datetime-local"].input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238B8A85' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.5' y='3.5' width='11' height='10' rx='1.5'/%3E%3Cline x1='2.5' y1='6.5' x2='13.5' y2='6.5'/%3E%3Cline x1='5.5' y1='2' x2='5.5' y2='5'/%3E%3Cline x1='10.5' y1='2' x2='10.5' y2='5'/%3E%3C/svg%3E");
+}
+/* Webkit (Chrome/Edge/Safari) — el icono nativo se vuelve invisible pero ocupa toda la caja,
+   convirtiendo todo el input en clickable para abrir el picker */
+input[type="date"].input::-webkit-calendar-picker-indicator,
+input[type="time"].input::-webkit-calendar-picker-indicator,
+input[type="datetime-local"].input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  background: transparent;
+}
+input[type="date"].input,
+input[type="time"].input,
+input[type="datetime-local"].input { position: relative; }
+/* Firefox — limita el icono nativo */
+input[type="date"].input::-moz-focus-inner { border: 0; }
+
+/* NUMBER inputs — quita los spinners feos del navegador */
+input[type="number"].input {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+input[type="number"].input::-webkit-outer-spin-button,
+input[type="number"].input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+/* FILTER FORM — alinea labels + controles + checkboxes consistente */
+.filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: stretch;
+  padding: 14px 18px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Grupo lógico: label arriba + controles abajo */
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.filter-group-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+.filter-chips {
+  display: inline-flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 2px;
+  gap: 0;
+}
+.filter-chips .chip {
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
+  padding: 6px 12px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 500;
+  transition: background 0.12s, color 0.12s;
+}
+.filter-chips .chip:hover { background: var(--hover); color: var(--ink); }
+.filter-chips .chip.active { background: var(--ink); color: var(--bg); }
+[data-theme="dark"] .filter-chips .chip.active { background: #fff; color: #131210; }
+
+.filter-divider {
+  width: 1px;
+  background: var(--border);
+  margin: 4px 2px;
+  align-self: stretch;
+}
+.filter-sep {
+  font-size: 13px;
+  color: var(--muted);
+  user-select: none;
+  padding: 0 2px;
+}
+.filter-unit {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.filter-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.filter-form label > span:first-child {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+  color: var(--muted);
+}
+/* Label que envuelve un checkbox inline (no column layout).
+   Usa :has() — soportado en Chrome/Edge/Safari 105+/Firefox 121+. */
+.filter-form label.check,
+.filter-form label:has(input[type="checkbox"]) {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 7px;
+  cursor: pointer;
+  text-transform: none;
+}
+.filter-form label.check > span,
+.filter-form label:has(input[type="checkbox"]) > span {
+  text-transform: none;
+  font-size: 13px;
+  color: var(--ink-2);
+  letter-spacing: 0;
+}
+
+/* Distribución de resultados — fila compacta con barra horizontal */
+.dist-row {
+  display: grid;
+  grid-template-columns: minmax(110px, auto) 1fr 56px 56px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+.dist-row + .dist-row { border-top: 1px dashed var(--border); }
+.dist-label { color: var(--ink-2); }
+.dist-bar .bar { width: 100%; }
+.dist-count { text-align: right; font-size: 12.5px; }
+.dist-pct { text-align: right; font-size: 12px; }
+

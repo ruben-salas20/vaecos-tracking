@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% from "macros.html" import carrier_badge, result_pill %}
+{% from "macros.html" import carrier_badge, result_pill, crumbs %}
 {% from "partials/_pagination.html" import pagination_nav %}
 {% block title %}Todas las guías{% endblock %}
 {% block content %}
+{{ crumbs(['Operación', 'Todas las guías']) }}
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Todas las guías</div>
@@ -16,10 +17,10 @@
     </div>
   </div>
   <div class="page-actions">
-    <a href="{{ url_for('dashboard.new_guide') }}" class="btn">Nueva guía</a>
     <form method="post" action="{{ url_for('runs.sync_notion') }}" style="display:inline;">
-      <button type="submit" class="btn primary">Sincronizar con Notion</button>
+      <button type="submit" class="btn">Sincronizar con Notion</button>
     </form>
+    <a href="{{ url_for('dashboard.new_guide') }}" class="btn brand">Nueva guía</a>
   </div>
 </div>
 
@@ -39,39 +40,51 @@
 </div>
 
 <div class="panel" style="margin-bottom:16px;">
-  <div class="panel-body">
-    <form method="get" action="{{ url_for('dashboard.all_guides') }}" class="filter-form" style="background:transparent;border:none;padding:0;">
-      <label>
-        <span>Estado</span>
-        <select class="input" name="estado">
-          <option value="">— Todos —</option>
-          {% for s in states %}
-          <option value="{{ s.estado_novedad }}" {% if s.estado_novedad == estado %}selected{% endif %}>
-            {{ s.estado_novedad }} ({{ s.n }})
-          </option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>
-        <span>Carrier</span>
-        <select class="input" name="carrier">
-          <option value="">— Todos —</option>
-          <option value="effi" {% if carrier == 'effi' %}selected{% endif %}>Effi</option>
-          <option value="guatex" {% if carrier == 'guatex' %}selected{% endif %}>Guatex</option>
-        </select>
-      </label>
-      <label>
-        <span>Buscar</span>
-        <input class="input" type="text" name="q" value="{{ q | e }}" placeholder="cliente, guía o teléfono">
-      </label>
-      <label style="flex-direction:row;align-items:center;gap:6px;padding-top:18px;">
+  <form method="get" action="{{ url_for('dashboard.all_guides') }}" class="filter-form">
+    <div class="filter-group">
+      <span class="filter-group-label">Estado</span>
+      <select class="input" name="estado" style="min-width:180px;">
+        <option value="">— Todos —</option>
+        {% for s in states %}
+        <option value="{{ s.estado_novedad }}" {% if s.estado_novedad == estado %}selected{% endif %}>
+          {{ s.estado_novedad }} ({{ s.n }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <span class="filter-group-label">Carrier</span>
+      <select class="input" name="carrier" style="min-width:140px;">
+        <option value="">— Todos —</option>
+        <option value="effi" {% if carrier == 'effi' %}selected{% endif %}>Effi</option>
+        <option value="guatex" {% if carrier == 'guatex' %}selected{% endif %}>Guatex</option>
+      </select>
+    </div>
+
+    <div class="filter-group" style="flex:1;min-width:200px;">
+      <span class="filter-group-label">Buscar</span>
+      <input class="input search" type="text" name="q" value="{{ q | e }}" placeholder="cliente, guía o teléfono">
+    </div>
+
+    <div class="filter-divider"></div>
+
+    <div class="filter-group">
+      <span class="filter-group-label" style="visibility:hidden;">_</span>
+      <label class="check filter-row" style="cursor:pointer;">
         <input type="checkbox" name="archived" value="1" {% if include_archived %}checked{% endif %}>
-        <span style="text-transform:none;font-size:12px;">Incluir archivadas</span>
+        <span>Incluir archivadas</span>
       </label>
-      <button type="submit" class="btn primary">Aplicar</button>
-      <a href="{{ url_for('dashboard.all_guides') }}" class="btn">Limpiar</a>
-    </form>
-  </div>
+    </div>
+
+    <div class="filter-group">
+      <span class="filter-group-label" style="visibility:hidden;">_</span>
+      <div class="filter-row">
+        <button type="submit" class="btn primary">Aplicar</button>
+        <a href="{{ url_for('dashboard.all_guides') }}" class="btn">Limpiar</a>
+      </div>
+    </div>
+  </form>
 </div>
 
 {% if rows %}

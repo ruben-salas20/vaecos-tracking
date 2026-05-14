@@ -1,8 +1,13 @@
 {% extends "base.html" %}
-{% from "macros.html" import result_pill, carrier_badge, mode_badge %}
+{% from "macros.html" import result_pill, carrier_badge, mode_badge, crumbs %}
 {% from "partials/_pagination.html" import pagination_nav %}
 {% block title %}Cliente — {{ cliente }}{% endblock %}
 {% block content %}
+<div class="crumbs">
+  <a href="{{ url_for('dashboard.analytics') }}">Analytics</a>
+  <span class="sep">/</span>
+  <span>{{ cliente | e | truncate(40) }}</span>
+</div>
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">{{ cliente | e }}</div>
@@ -17,7 +22,7 @@
   </div>
   <div class="page-actions">
     <a href="{{ url_for('dashboard.analytics') }}" class="btn">Volver a analytics</a>
-    <a href="{{ url_for('dashboard.runs') }}" class="btn">Ver corridas</a>
+    <a href="{{ url_for('dashboard.runs') }}" class="btn">Ver historial</a>
   </div>
 </div>
 

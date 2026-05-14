@@ -2,6 +2,11 @@
 {% from "partials/_pagination.html" import pagination_nav %}
 {% block title %}Audit log · Creador guías{% endblock %}
 {% block content %}
+<div class="crumbs">
+  <a href="{{ url_for('effi.dashboard') }}">Creador guías</a>
+  <span class="sep">/</span>
+  <span>Audit log</span>
+</div>
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Audit log</div>
@@ -10,7 +15,7 @@
       {% else %}Últimas 200 acciones del bot.{% endif %}
     </div>
   </div>
-  <div>
+  <div class="page-actions">
     {% if only_order %}
       <a href="{{ url_for('effi.audit_list') }}" class="btn">Ver todo</a>
     {% endif %}

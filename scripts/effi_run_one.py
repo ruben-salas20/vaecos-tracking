@@ -19,6 +19,28 @@ from app.effi_guides.effi_config import load_settings  # noqa: E402
 from app.effi_guides.runner import EffiRunner  # noqa: E402
 
 
+def _build_notion_provider():
+    try:
+        from app.config import load_settings as load_v04_settings
+        from vaecos_v02.providers.notion_provider import NotionProvider
+    except ImportError:
+        return None
+    try:
+        v04 = load_v04_settings(Path(__file__).resolve().parents[1] / "v0.4")
+    except Exception:
+        return None
+    if not getattr(v04, "notion_api_key", "") or not getattr(v04, "notion_data_source_id", ""):
+        return None
+    try:
+        return NotionProvider(
+            api_key=v04.notion_api_key,
+            notion_version=v04.notion_version,
+            data_source_id=v04.notion_data_source_id,
+        )
+    except Exception:
+        return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Procesa una orden Effi (end-to-end o dry-run).")
     parser.add_argument("--order", type=int, required=True, help="ID de la orden a procesar.")
@@ -34,7 +56,10 @@ def main() -> int:
         print(f"ERROR: no existe {settings.session_path}. Corré 'python scripts/effi_login.py' primero.")
         return 2
 
-    runner = EffiRunner(settings, dry_run=not args.apply)
+    notion_provider = _build_notion_provider()
+    if notion_provider is not None:
+        print("→ Notion: habilitado (auto-sync de guías nuevas a Notion).")
+    runner = EffiRunner(settings, dry_run=not args.apply, notion_provider=notion_provider)
     if not runner.catalog:
         print(f"ERROR: catálogo vacío en {settings.db_path}. Cargá productos en /effi/catalog.")
         return 2
@@ -46,7 +71,12 @@ def main() -> int:
     try:
         with EffiBot(settings) as bot:
             if not bot.health_check():
-                raise NotLoggedInError("Sesión expirada — corré scripts/effi_login.py.")
+                print("⚠ Sesión Effi expirada — intentando re-login automático...")
+                if not (bot.try_auto_login() and bot.health_check()):
+                    raise NotLoggedInError(
+                        "Sesión expirada y auto-login falló — corré scripts/effi_login.py."
+                    )
+                print("✓ Re-login automático exitoso.")
 
             summary = runner.run_all(bot, only_order=args.order)
 

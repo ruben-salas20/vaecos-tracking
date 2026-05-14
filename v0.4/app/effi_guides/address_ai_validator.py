@@ -35,6 +35,17 @@ SYSTEM_PROMPT = (
     "y zona/municipio amplia, lugar repetido en varias ubicaciones del país).\n"
     "- 'invalid' : la dirección NO permite entregar. Vacía, trivial ('en mi casa', 'casa'), "
     "solo nombre de departamento sin más, o solo un landmark genérico sin ubicación.\n\n"
+    "FORMATO Effi: las direcciones llegan a veces con prefijo estructural "
+    "'Depto / Municipio / Localidad (Zona N) / texto libre'. El prefijo viene de dropdowns "
+    "del ERP — NO cuenta como dirección del cliente. Lo que importa es si el TEXTO LIBRE "
+    "(después del último ' / ') es suficiente para entregar. Si la 'Zona N' del prefijo es lo único "
+    "que satisface la estructura urbana, la dirección es INSUFICIENTE.\n\n"
+    "REGLA CLAVE — landmarks genéricos sin nombre propio NO son suficientes: 'ferretería', "
+    "'iglesia', 'tienda', 'mercado', 'farmacia', 'comedor' sin nombre específico ('Ferretería La "
+    "Económica', 'Iglesia San Pedro') o sin relación espacial precisa ('a la par del rótulo rojo') "
+    "deben marcarse INVALID o REVIEW. Una calle/avenida con solo el número de vía (ej. '6 avenida') "
+    "necesita ADEMÁS un número de inmueble (formato 'X-Y' como '12-51' o '0-54') o un landmark "
+    "específico para ser entregable.\n\n"
     "Considera typos comunes en español guatemalteco (sentro=centro, kalle=calle, sona=zona, "
     "banrrural=Banrural, krk=cerca, kasa=casa, kuadras=cuadras, etc.). Acepta abreviaturas "
     "locales (z=zona, av=avenida).\n\n"
@@ -63,6 +74,16 @@ SYSTEM_PROMPT = (
     'Veredicto: {"status": "invalid", "reason": "Trivial sin ubicación concreta"}\n\n'
     'Dirección: "Por ahi por las afueras Pregunten por mi"\n'
     'Veredicto: {"status": "invalid", "reason": "Demasiado vago, sin referencia concreta"}\n\n'
+    'Dirección: "Guatemala / Guatemala / Guatemala (Zona 4) / 6 avenida Ferretería"\n'
+    'Veredicto: {"status": "invalid", "reason": "Texto libre es solo \\"6 avenida Ferretería\\" — sin número de inmueble ni ferretería con nombre"}\n\n'
+    'Dirección: "Guatemala / Mixco / Zona 1 / 5 calle 12-51 frente a la iglesia"\n'
+    'Veredicto: {"status": "valid", "reason": "Texto libre completo: calle + número de inmueble + landmark"}\n\n'
+    'Dirección: "Calle principal tienda"\n'
+    'Veredicto: {"status": "invalid", "reason": "Calle genérica, landmark sin nombre"}\n\n'
+    'Dirección: "5 avenida frente a la iglesia"\n'
+    'Veredicto: {"status": "review", "reason": "Avenida sin número ni zona; iglesia genérica sin nombre"}\n\n'
+    'Dirección: "zona 1 cerca del mercado"\n'
+    'Veredicto: {"status": "review", "reason": "Zona muy amplia, mercado genérico — qué mercado?"}\n\n'
     "Responde ÚNICAMENTE con un JSON en una sola línea, sin texto adicional:\n"
     '{"status": "valid|review|invalid", "reason": "razón breve en español, máximo 15 palabras"}'
 )

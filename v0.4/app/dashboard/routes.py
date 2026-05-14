@@ -33,6 +33,9 @@ def home():
                                count_map={},
                                needs_attention=0,
                                trend_svg="",
+                               top_attention=[],
+                               duration_seconds=None,
+                               total_processed=0,
                                created=False)
 
     run_id = int(latest["id"])
@@ -41,7 +44,10 @@ def home():
     needs_attention = sum(v for k, v in count_map.items() if k != "unchanged")
     trend_rows = repo.attention_trend(days=30)
     trend_points = [(str(row["day"]), int(row["total"])) for row in trend_rows]
-    trend_svg = line_chart("Atencion (30 dias)", trend_points, color="#dc2626")
+    trend_svg = line_chart("", trend_points, color="#dc2626")
+    top_attention = repo.get_results_requiring_attention(run_id)[:5]
+    duration_seconds = repo.run_duration_seconds(run_id)
+    total_processed = int(latest["total_processed"] or 0)
     created = bool(request.args.get("created"))
 
     return render_template(
@@ -50,6 +56,9 @@ def home():
         count_map=count_map,
         needs_attention=needs_attention,
         trend_svg=trend_svg,
+        top_attention=top_attention,
+        duration_seconds=duration_seconds,
+        total_processed=total_processed,
         created=created,
     )
 

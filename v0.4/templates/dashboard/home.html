@@ -1,63 +1,182 @@
 {% extends "base.html" %}
-{% from "macros.html" import result_pill, carrier_badge %}
+{% from "macros.html" import result_pill, carrier_badge, crumbs %}
 {% block title %}Centro Operativo{% endblock %}
 {% block content %}
+
+{{ crumbs(['Operación', 'Centro Operativo']) }}
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Centro Operativo</div>
     {% if latest %}
-    <div class="page-sub">Corrida #{{ latest['id'] }} · {{ latest['started_at'] | fmt_ts }}</div>
+    <div class="page-sub">Corrida #{{ latest['id'] }} · {{ latest['started_at'] | fmt_ts }}{% if duration_seconds %} · {{ duration_seconds | fmt_duration_seconds }}{% endif %}</div>
     {% else %}
-    <div class="page-sub">Sin corridas registradas.</div>
+    <div class="page-sub">Sin corridas registradas todavía.</div>
     {% endif %}
   </div>
   <div class="page-actions">
-    <a href="{{ url_for('dashboard.attention') }}" class="btn">Ver que requiere atención</a>
-    <a href="{{ url_for('dashboard.run_new') }}" class="btn">Nueva corrida</a>
+    {% if latest %}<a href="{{ url_for('dashboard.attention') }}" class="btn">Requiere atención</a>{% endif %}
     <a href="{{ url_for('dashboard.runs') }}" class="btn">Historial</a>
+    <a href="{{ url_for('dashboard.run_new') }}" class="btn brand">Nueva corrida</a>
   </div>
 </div>
 
 {% if created %}
-<div class="banner info" style="margin-bottom:16px;">Corrida ejecutada correctamente.</div>
+<div class="banner ok" style="margin-bottom:16px;">
+  <div class="banner-body">
+    <div class="banner-title">Corrida ejecutada correctamente</div>
+    <div class="banner-text">Los resultados ya están disponibles abajo.</div>
+  </div>
+</div>
 {% endif %}
 
 {% if latest %}
+
   {% if needs_attention > 0 %}
-  <div class="banner danger" style="margin-bottom:16px;">
-    {{ needs_attention }} guía(s) requieren atención en la última corrida.
+  <div class="banner danger">
+    <div class="banner-body">
+      <div class="banner-title">{{ needs_attention }} guía{% if needs_attention != 1 %}s{% endif %} requiere{% if needs_attention != 1 %}n{% endif %} acción hoy</div>
+      <div class="banner-text">Resultado de la última corrida. Revisá la lista priorizada para resolverlas.</div>
+    </div>
+    <a href="{{ url_for('dashboard.attention') }}" class="btn primary">Revisar ahora</a>
   </div>
   {% else %}
-  <div class="banner info" style="margin-bottom:16px;">
-    Sin guías que requieran atención en la última corrida.
+  <div class="banner ok">
+    <div class="banner-body">
+      <div class="banner-title">Sin guías que requieran atención</div>
+      <div class="banner-text">Todas las guías de la última corrida quedaron sin cambios o resueltas.</div>
+    </div>
   </div>
   {% endif %}
 
-  <div class="kpi-grid" style="margin-bottom:20px;">
+  {% set changed_count = count_map.get('changed', 0) %}
+  {% set error_count = count_map.get('error', 0) + count_map.get('parse_error', 0) %}
+  {% set review_count = count_map.get('manual_review', 0) %}
+  <div class="kpi-grid" style="margin-bottom:16px;">
     <div class="kpi">
-      <div class="kpi-label">Última corrida</div>
-      <div class="kpi-value">#{{ latest['id'] }}</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Procesadas</div>
-      <div class="kpi-value">{{ latest['total_processed'] }}</div>
+      <div class="kpi-label"><span>Última corrida</span></div>
+      <div class="kpi-value tnum">{{ total_processed }}</div>
+      <div class="kpi-meta">
+        <span class="mono">#{{ latest['id'] }}</span>
+        {% if duration_seconds %}<span>·</span><span>{{ duration_seconds | fmt_duration_seconds }}</span>{% endif %}
+      </div>
     </div>
     <div class="kpi {% if needs_attention > 0 %}alert{% endif %}">
-      <div class="kpi-label">Requieren atención</div>
-      <div class="kpi-value">{{ needs_attention }}</div>
+      <div class="kpi-label"><span>Requieren atención</span></div>
+      <div class="kpi-value tnum">{{ needs_attention }}</div>
+      <div class="kpi-meta">
+        {% if review_count %}<span>{{ review_count }} revisión manual</span>{% else %}<span class="muted">sin revisión manual</span>{% endif %}
+      </div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label"><span>Cambios aplicados</span></div>
+      <div class="kpi-value tnum">{{ changed_count }}</div>
+      <div class="kpi-meta">
+        {% if total_processed %}<span>{{ ((changed_count / total_processed) * 100) | round(1) }}% del total</span>{% endif %}
+      </div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label"><span>Errores</span></div>
+      <div class="kpi-value tnum">{{ error_count }}</div>
+      <div class="kpi-meta">
+        {% set parse_e = count_map.get('parse_error', 0) %}
+        {% set other_e = count_map.get('error', 0) %}
+        {% if error_count %}<span>{{ parse_e }} parse · {{ other_e }} red</span>{% else %}<span class="muted">sin errores</span>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="home-grid">
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <div class="panel-title">Guías que requieren atención</div>
+          <div class="panel-sub">Top 5 de la corrida #{{ latest['id'] }} · ordenado por prioridad</div>
+        </div>
+        {% if needs_attention > 5 %}
+        <a href="{{ url_for('dashboard.attention') }}" class="btn btn-sm">Ver todas ({{ needs_attention }})</a>
+        {% endif %}
+      </div>
+      <div class="panel-body flush">
+        {% if top_attention %}
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Guía</th>
+              <th>Cliente</th>
+              <th>Resultado</th>
+              <th>Carrier</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in top_attention %}
+            <tr>
+              <td class="mono"><a href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">{{ row['guia'] | e }}</a></td>
+              <td>{{ (row['cliente'] or '—') | e | truncate(28) }}</td>
+              <td>{{ result_pill(row['resultado']) }}</td>
+              <td>{{ carrier_badge(row['carrier']) }}</td>
+              <td style="text-align:right">
+                <a class="btn btn-sm" href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">Abrir</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty" style="padding:32px 16px;">Sin guías que requieran atención en la última corrida.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <div class="panel-title">Distribución de resultados</div>
+          <div class="panel-sub">Corrida #{{ latest['id'] }}</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        {% set order = [
+          ('changed', 'Con cambio', 'ok'),
+          ('unchanged', 'Sin cambios', ''),
+          ('manual_review', 'Revisión manual', 'warn'),
+          ('parse_error', 'Error de parseo', 'danger'),
+          ('error', 'Error', 'danger'),
+        ] %}
+        {% for key, label, color in order %}
+          {% set count = count_map.get(key, 0) %}
+          {% if count > 0 %}
+          {% set pct = ((count / total_processed) * 100) if total_processed else 0 %}
+          <div class="dist-row">
+            <div class="dist-label">{{ label }}</div>
+            <div class="dist-bar"><div class="bar"><div class="bar-fill {{ color }}" style="width: {{ pct }}%"></div></div></div>
+            <div class="dist-count mono tnum">{{ count }}</div>
+            <div class="dist-pct mono tnum muted">{{ pct | round(1) }}%</div>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
     </div>
   </div>
 
   {% if trend_svg %}
-  <div style="margin-top:16px;">
-    {{ trend_svg | safe }}
+  <div class="panel" style="margin-top:16px;">
+    <div class="panel-head">
+      <div>
+        <div class="panel-title">Tendencia · últimos 30 días</div>
+        <div class="panel-sub">Guías que requirieron atención por día</div>
+      </div>
+    </div>
+    <div class="panel-body">
+      {{ trend_svg | safe }}
+    </div>
   </div>
   {% endif %}
 
 {% else %}
 <div class="panel">
   <div class="panel-body">
-    <div class="empty">No hay corridas registradas. Ejecuta una nueva corrida para empezar.</div>
+    <div class="empty">No hay corridas registradas. Ejecutá una nueva corrida para empezar.</div>
   </div>
 </div>
 {% endif %}

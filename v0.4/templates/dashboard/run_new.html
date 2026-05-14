@@ -1,13 +1,15 @@
 {% extends "base.html" %}
+{% from "macros.html" import crumbs %}
 {% block title %}Nueva corrida{% endblock %}
 {% block content %}
+{{ crumbs(['Acciones', 'Nueva corrida']) }}
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Nueva corrida</div>
-    <div class="page-sub">Ejecuta una corrida desde la web usando la lógica operativa de v0.2.</div>
+    <div class="page-sub">Ejecutá una corrida desde la web usando la lógica operativa de v0.2.</div>
   </div>
   <div class="page-actions">
-    <a href="{{ url_for('dashboard.runs') }}" class="btn">Ver corridas</a>
+    <a href="{{ url_for('dashboard.runs') }}" class="btn">Ver historial</a>
   </div>
 </div>
 

@@ -112,6 +112,7 @@ class EffiRunner:
         dry_run: bool = True,
         *,
         ai_validator: MiniMaxAddressValidator | None = None,
+        notion_provider=None,
     ):
         self.settings = settings
         self.dry_run = dry_run
@@ -122,6 +123,11 @@ class EffiRunner:
         # AI validator: si no se pasa explícito, se construye desde settings.
         # Si AI no está configurada o disabled, queda None y se usa solo regex.
         self.ai_validator = ai_validator if ai_validator is not None else build_validator_from_settings(settings)
+        # Notion provider opcional: si está, después de crear la guía en Effi
+        # automáticamente la creamos en Notion también (que auto-sync la baja a
+        # la tabla local `guides`). Si es None, se skipea — los callers (cron y
+        # UI) son responsables de wirearlo desde V04Settings.
+        self.notion_provider = notion_provider
         # Buffer de notificaciones por corrida. En lugar de mandar 1 email por
         # cada escalation/error, juntamos todo y mandamos UN solo digest al final
         # de run_all. Cada item: {"type": "escalation"|"failed"|"remision_sin_guia",
@@ -324,6 +330,12 @@ class EffiRunner:
                 orden_id=orden_id, status="failed", remision_id=remision_id, error_msg=str(e)
             )
 
+        # 3) Sync a Notion: scrape tracking number CARGO EXPRESO + crear página
+        #    en Notion. Si falla, marcamos done en Effi (la guía existe ahí) y
+        #    encolamos para revisión humana — la operadora reintenta el sync.
+        if self.notion_provider is not None:
+            self._sync_to_notion(bot, scraped, plan, productos, remision_id, guia_id, addr)
+
         # ✓ Todo OK.
         self.orders_repo.upsert(
             orden_id=orden_id,
@@ -349,6 +361,179 @@ class EffiRunner:
             remision_id=remision_id,
             guia_id=guia_id,
         )
+
+    def _sync_to_notion(
+        self,
+        bot: EffiBot,
+        scraped: ScrapedOrder,
+        plan: ProcessingPlan,
+        productos: list[OrderProduct],
+        remision_id: int,
+        guia_id: int,
+        addr: AddressResult,
+    ) -> None:
+        """Crea la página en Notion para la guía recién generada en Effi.
+
+        No falla la corrida si Notion rechaza — encola para revisión humana y
+        deja el orden marcado done en Effi (la guía YA existe allá, solo falta
+        sincronizarla). La operadora ve el item en `/effi/queue` y decide.
+        """
+        from .bot import _extract_name  # helper local
+        orden_id = scraped.orden_id
+
+        # Importar la dependencia con lazy import para que tests del runner
+        # que NO usan Notion no requieran vaecos_v02 disponible.
+        try:
+            from vaecos_v02.app.services.add_guide import add_guide  # type: ignore
+        except ImportError as e:
+            self.audit_repo.log(
+                "notion_sync_skipped",
+                orden_id=orden_id,
+                payload={"reason": f"vaecos_v02 no importable: {e}"},
+                ok=False,
+            )
+            return
+
+        # 1) Scrape tracking number + valor a recaudar del mismo row.
+        try:
+            row_data = bot.read_guia_row_data(guia_id)
+        except Exception as e:
+            row_data = None
+            self.audit_repo.log(
+                "notion_tracking_scrape_failed",
+                orden_id=orden_id,
+                payload={"guia_id": guia_id, "error": str(e)},
+                ok=False,
+            )
+
+        tracking = (row_data or {}).get("tracking")
+        valor_recaudar = (row_data or {}).get("valor_recaudar")
+
+        if not tracking:
+            self._enqueue_notion_failure(
+                orden_id=orden_id,
+                remision_id=remision_id,
+                guia_id=guia_id,
+                reason="no se pudo scrapear el tracking number CARGO EXPRESO desde la tabla",
+            )
+            return
+
+        # 2) Construir payload para add_guide.
+        nombre_cliente = _extract_name(scraped.cliente) or scraped.cliente.strip().split("\n")[0]
+        # Producto: solo la descripción (la cantidad va en su columna propia).
+        # Si hay múltiples items distintos, los concatenamos con coma.
+        producto_str = ", ".join(p.descripcion for p in productos)
+        cantidad_total = sum(p.cantidad for p in productos)
+        # Valor: preferir el "Recaudo: $X" del row Effi (es lo que CARGO EXPRESO
+        # va a cobrar al cliente). Fallback a plan.valor_declarado si el scrape falló.
+        valor_final = valor_recaudar if valor_recaudar is not None else plan.valor_declarado
+
+        fields = {
+            "guia": tracking,
+            "cliente": nombre_cliente,
+            "estado_novedad": "Sin recolectar",
+            "carrier": "effi",
+            "telefono": scraped.telefono,
+            "producto": producto_str,
+            "valor": valor_final,
+            "cantidad": cantidad_total,
+        }
+
+        # 3) Intentar crear en Notion → local + audit.
+        try:
+            result = add_guide(
+                db_path=self.settings.db_path,
+                notion=self.notion_provider,
+                fields=fields,
+                autor="bot:effi",
+            )
+        except ValueError as e:
+            # Validación local (ej. guía ya existe). Log + encolar pero NO romper.
+            msg = str(e)
+            already_exists = "ya existe" in msg.lower()
+            self.audit_repo.log(
+                "notion_sync_skipped" if already_exists else "notion_sync_failed",
+                orden_id=orden_id,
+                payload={
+                    "guia": tracking,
+                    "guia_id": guia_id,
+                    "error": msg,
+                },
+                ok=already_exists,  # ok=True si ya existía (no es error real)
+            )
+            if not already_exists:
+                self._enqueue_notion_failure(
+                    orden_id=orden_id,
+                    remision_id=remision_id,
+                    guia_id=guia_id,
+                    reason=f"validación local: {msg}",
+                    tracking=tracking,
+                )
+            return
+        except Exception as e:
+            self.audit_repo.log(
+                "notion_sync_failed",
+                orden_id=orden_id,
+                payload={
+                    "guia": tracking,
+                    "guia_id": guia_id,
+                    "error": str(e),
+                    "traceback": traceback.format_exc(limit=3),
+                },
+                ok=False,
+            )
+            self._enqueue_notion_failure(
+                orden_id=orden_id,
+                remision_id=remision_id,
+                guia_id=guia_id,
+                reason=f"Notion rechazó: {e}",
+                tracking=tracking,
+            )
+            return
+
+        # ✓ Sync OK.
+        self.audit_repo.log(
+            "notion_sync_ok",
+            orden_id=orden_id,
+            payload={
+                "guia": result.guia,
+                "page_id": result.page_id,
+                "guia_id": guia_id,
+            },
+        )
+
+    def _enqueue_notion_failure(
+        self,
+        *,
+        orden_id: int,
+        remision_id: int,
+        guia_id: int,
+        reason: str,
+        tracking: str | None = None,
+    ) -> None:
+        """La guía SE CREÓ en Effi pero falló el sync a Notion. La encolamos para
+        que la operadora reintente desde la app (ej. importar Excel con esa guía,
+        o crear manualmente desde /guides/new)."""
+        details = {
+            "remision_id": remision_id,
+            "guia_id_effi": guia_id,
+            "tracking": tracking or "(no scrapeado)",
+            "reason": reason,
+            "mensaje": (
+                f"La guía SE CREÓ en Effi (guia_id={guia_id}) pero no se pudo "
+                f"sincronizar automáticamente a Notion. Razón: {reason}. "
+                "Reintentar desde /guides/new o esperar al próximo sync_guides."
+            ),
+        }
+        self.queue_repo.enqueue(orden_id, reason="notion_sync_failed", details=details)
+        self._pending_notifications.append({
+            "type": "notion_sync_failed",
+            "orden_id": orden_id,
+            "summary": (
+                f"Guía {tracking or guia_id} creada en Effi pero no sincronizada a Notion. "
+                f"{reason}"
+            ),
+        })
 
     def _escalate(
         self,
@@ -570,7 +755,16 @@ class EffiRunner:
 
         Si _pending_notifications viene vacío (todo era re-detección de items ya en cola)
         y no hubo procesadas reales, no manda email.
+
+        Cuando `EFFI_DAILY_DIGEST_ONLY=true` (caso producción con cron horario), este
+        método NO manda nada — el resumen diario lo arma `scripts/effi_daily_digest.py`
+        a las 22:00 GT consultando `effi_audit_log`. Alertas críticas (sesión expirada,
+        error fatal de cron) siguen mandándose inmediato desde `scripts/effi_run.py`.
         """
+        import os as _os
+        if _os.environ.get("EFFI_DAILY_DIGEST_ONLY", "").lower() in ("1", "true", "yes", "on"):
+            return
+
         if not self._pending_notifications and summary.processed == 0:
             return
 

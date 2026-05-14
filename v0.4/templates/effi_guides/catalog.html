@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% from "macros.html" import crumbs %}
 {% block title %}Catálogo Effi{% endblock %}
 {% block content %}
+{{ crumbs(['Admin', 'Catálogo Effi']) }}
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Catálogo Effi</div>

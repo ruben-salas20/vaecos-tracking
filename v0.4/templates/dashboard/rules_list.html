@@ -1,13 +1,15 @@
 {% extends "base.html" %}
+{% from "macros.html" import crumbs %}
 {% block title %}Reglas{% endblock %}
 {% block content %}
+{{ crumbs(['Admin', 'Reglas']) }}
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Reglas del motor</div>
     <div class="page-sub">Reglas que el motor de tracking aplica para decidir el estado propuesto. Se evalúan por prioridad ascendente — primera coincidencia gana.</div>
   </div>
-  <div>
-    <a href="{{ url_for('dashboard.rule_new') }}" class="btn primary">Nueva regla</a>
+  <div class="page-actions">
+    <a href="{{ url_for('dashboard.rule_new') }}" class="btn brand">Nueva regla</a>
   </div>
 </div>
 
@@ -27,24 +29,28 @@
 </div>
 
 <div class="panel" style="margin-bottom:16px;">
-  <div class="panel-body">
-    <form method="get" action="{{ url_for('dashboard.rules') }}" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
-      <div>
-        <label class="field-label" for="carrier">Carrier</label>
-        <input class="input mono" type="text" id="carrier" name="carrier" value="{{ carrier_filter | e }}" placeholder="effi (vacío = todos)" style="width:180px;">
+  <form method="get" action="{{ url_for('dashboard.rules') }}" class="filter-form">
+    <div class="filter-group">
+      <span class="filter-group-label">Carrier</span>
+      <input class="input mono" type="text" id="carrier" name="carrier" value="{{ carrier_filter | e }}" placeholder="effi (vacío = todos)" style="width:200px;">
+    </div>
+    <div class="filter-group">
+      <span class="filter-group-label" style="visibility:hidden;">_</span>
+      <label class="filter-row" style="cursor:pointer;">
+        <input type="checkbox" name="show_disabled" value="1" {% if show_disabled %}checked{% endif %}>
+        <span>Mostrar desactivadas</span>
+      </label>
+    </div>
+    <div class="filter-group">
+      <span class="filter-group-label" style="visibility:hidden;">_</span>
+      <div class="filter-row">
+        <button type="submit" class="btn primary">Filtrar</button>
+        {% if carrier_filter or show_disabled %}
+        <a href="{{ url_for('dashboard.rules') }}" class="btn">Limpiar</a>
+        {% endif %}
       </div>
-      <div>
-        <label class="field-label">
-          <input type="checkbox" name="show_disabled" value="1" {% if show_disabled %}checked{% endif %}>
-          Mostrar desactivadas
-        </label>
-      </div>
-      <button type="submit" class="btn">Filtrar</button>
-      {% if carrier_filter or show_disabled %}
-      <a href="{{ url_for('dashboard.rules') }}" class="btn">Limpiar</a>
-      {% endif %}
-    </form>
-  </div>
+    </div>
+  </form>
 </div>
 
 <div class="panel">

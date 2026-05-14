@@ -1,3 +1,12 @@
+{% macro crumbs(items) %}
+<div class="crumbs">
+  {%- for c in items -%}
+    {% if not loop.first %}<span class="sep">/</span>{% endif %}
+    <span>{{ c }}</span>
+  {%- endfor -%}
+</div>
+{% endmacro %}
+
 {% macro result_pill(resultado) %}
 {% set mapping = {
   'changed': ('ok', 'Con cambio'),

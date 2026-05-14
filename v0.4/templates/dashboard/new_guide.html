@@ -1,10 +1,16 @@
 {% extends "base.html" %}
+{% from "macros.html" import crumbs %}
 {% block title %}Nueva guía{% endblock %}
 {% block content %}
+<div class="crumbs">
+  <a href="{{ url_for('dashboard.all_guides') }}">Todas las guías</a>
+  <span class="sep">/</span>
+  <span>Nueva</span>
+</div>
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Nueva guía</div>
-    <div class="page-sub">Crea una nueva guía. Se escribe primero en Notion; si Notion la acepta, queda inmediatamente disponible en la app.</div>
+    <div class="page-sub">Se escribe primero en Notion; si Notion la acepta, queda inmediatamente disponible en la app.</div>
   </div>
   <div class="page-actions">
     <a href="{{ url_for('dashboard.all_guides') }}" class="btn">Cancelar</a>

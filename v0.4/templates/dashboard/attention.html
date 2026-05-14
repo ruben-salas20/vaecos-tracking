@@ -1,7 +1,9 @@
 {% extends "base.html" %}
-{% from "macros.html" import result_pill, carrier_badge %}
+{% from "macros.html" import result_pill, carrier_badge, crumbs %}
 {% block title %}Requiere atención{% endblock %}
 {% block content %}
+
+{{ crumbs(['Operación', 'Requiere atención']) }}
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Requiere atención</div>
@@ -12,49 +14,73 @@
     {% endif %}
   </div>
   <div class="page-actions">
-    <a href="{{ url_for('dashboard.run_new') }}" class="btn">Nueva corrida</a>
-    <a href="{{ url_for('dashboard.runs') }}" class="btn">Ver corridas</a>
+    <a href="{{ url_for('dashboard.runs') }}" class="btn">Historial</a>
+    <a href="{{ url_for('dashboard.run_new') }}" class="btn brand">Nueva corrida</a>
   </div>
 </div>
 
 {% if not latest %}
-<div class="panel"><div class="panel-body"><div class="empty">No hay corridas registradas.</div></div></div>
+<div class="panel"><div class="panel-body"><div class="empty">No hay corridas registradas todavía.</div></div></div>
 {% elif not by_result %}
-<div class="banner info">Sin guías que requieran atención en la última corrida. Todo en orden.</div>
+<div class="banner ok">
+  <div class="banner-body">
+    <div class="banner-title">Sin guías que requieran atención</div>
+    <div class="banner-text">Todas las guías de la última corrida quedaron sin cambios o resueltas.</div>
+  </div>
+</div>
 {% else %}
+
+  {# Resumen visual por categoría — chips con conteos #}
+  <div class="panel" style="margin-bottom:16px;">
+    <div class="filterbar">
+      {% for resultado in ['changed', 'manual_review', 'parse_error', 'error'] %}
+        {% set group = by_result.get(resultado, []) %}
+        {% if group %}
+        <a href="#sec-{{ resultado }}" class="chip">
+          {{ section_labels[resultado] }} <span class="count">{{ group | length }}</span>
+        </a>
+        {% endif %}
+      {% endfor %}
+      <div style="flex:1"></div>
+      <a href="{{ url_for('dashboard.all_guides') }}" class="chip">Ver todas las guías</a>
+    </div>
+  </div>
+
   {% for resultado in ['changed', 'manual_review', 'parse_error', 'error'] %}
     {% set group = by_result.get(resultado, []) %}
     {% if group %}
-    <div style="margin-bottom:20px;">
-      <div class="row" style="margin-bottom:8px;">
-        <h2 style="font-size:14px;font-weight:600;color:var(--ink);">{{ section_labels[resultado] }} ({{ group | length }})</h2>
-      </div>
+    <div id="sec-{{ resultado }}" style="margin-bottom:20px;">
       <div class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">{{ section_labels[resultado] }}</div>
+            <div class="panel-sub">{{ group | length }} guía{% if group | length != 1 %}s{% endif %} en esta categoría</div>
+          </div>
+          {{ result_pill(resultado) }}
+        </div>
         <div class="panel-body flush">
           <table class="tbl">
             <thead>
               <tr>
                 <th>Guía</th>
                 <th>Cliente</th>
-                <th>Transportista</th>
-                <th>Resultado</th>
-                <th>Acción requerida</th>
+                <th>Carrier</th>
                 <th>Estado Effi</th>
                 <th>Propuesto</th>
+                <th>Acción</th>
                 <th>Motivo</th>
               </tr>
             </thead>
             <tbody>
               {% for row in group %}
               <tr>
-                <td><a href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">{{ row['guia'] }}</a></td>
-                <td>{{ row['cliente'] | e }}</td>
+                <td class="mono"><a href="{{ url_for('dashboard.guide_detail', guia=row['guia']) }}">{{ row['guia'] | e }}</a></td>
+                <td>{{ (row['cliente'] or '—') | e | truncate(28) }}</td>
                 <td>{{ carrier_badge(row['carrier']) }}</td>
-                <td>{{ result_pill(row['resultado']) }}</td>
-                <td>{{ row['requiere_accion'] or '' | e }}</td>
-                <td>{{ row['estado_effi_actual'] or 'N/D' | e }}</td>
-                <td>{{ row['estado_propuesto'] or 'N/D' | e }}</td>
-                <td>{{ row['motivo'] | e_trunc }}</td>
+                <td class="muted">{{ row['estado_effi_actual'] or '—' | e | truncate(22) }}</td>
+                <td>{{ row['estado_propuesto'] or '—' | e | truncate(22) }}</td>
+                <td>{{ row['requiere_accion'] or '' | e | truncate(22) }}</td>
+                <td class="muted" style="font-size:12.5px;">{{ row['motivo'] | e_trunc }}</td>
               </tr>
               {% endfor %}
             </tbody>

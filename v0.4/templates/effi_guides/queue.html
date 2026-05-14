@@ -1,13 +1,19 @@
 {% extends "base.html" %}
+{% from "macros.html" import crumbs %}
 {% from "partials/_pagination.html" import pagination_nav %}
 {% block title %}Cola humana · Creador guías{% endblock %}
 {% block content %}
+<div class="crumbs">
+  <a href="{{ url_for('effi.dashboard') }}">Creador guías</a>
+  <span class="sep">/</span>
+  <span>Cola humana</span>
+</div>
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Cola humana</div>
     <div class="page-sub">Órdenes que el bot no pudo procesar automáticamente y requieren revisión.</div>
   </div>
-  <div>
+  <div class="page-actions">
     <a href="{{ url_for('effi.dashboard') }}" class="btn">Volver al dashboard</a>
   </div>
 </div>

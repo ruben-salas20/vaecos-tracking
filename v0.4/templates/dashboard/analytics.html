@@ -1,9 +1,10 @@
 {% extends "base.html" %}
-{% from "macros.html" import carrier_badge %}
+{% from "macros.html" import carrier_badge, crumbs %}
 {% from "partials/_info_tip.html" import info_tip, info_tip_styles %}
 {% block title %}Analytics{% endblock %}
 {% block content %}
 {{ info_tip_styles() }}
+{{ crumbs(['Inteligencia', 'Analytics']) }}
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Analytics</div>
@@ -25,30 +26,43 @@
 
 {# ── Filtro de rango ─────────────────────────────────────────────── #}
 <div class="panel" style="margin-bottom:16px;">
-  <div class="panel-body">
-    <form method="get" action="{{ url_for('dashboard.analytics') }}" style="display:flex;flex-wrap:wrap;gap:12px;align-items:end;">
-      <div style="display:flex;gap:6px;">
-        <a href="{{ url_for('dashboard.analytics', days=7) }}" class="btn btn-sm {% if range_mode == 'preset' and days == 7 %}primary{% endif %}">7d</a>
-        <a href="{{ url_for('dashboard.analytics', days=30) }}" class="btn btn-sm {% if range_mode == 'preset' and days == 30 %}primary{% endif %}">30d</a>
-        <a href="{{ url_for('dashboard.analytics', days=90) }}" class="btn btn-sm {% if range_mode == 'preset' and days == 90 %}primary{% endif %}">90d</a>
+  <form method="get" action="{{ url_for('dashboard.analytics') }}" class="filter-form">
+    <div class="filter-group">
+      <span class="filter-group-label">Rango</span>
+      <div class="filter-chips">
+        <a href="{{ url_for('dashboard.analytics', days=7) }}"  class="chip {% if range_mode == 'preset' and days == 7 %}active{% endif %}">7 días</a>
+        <a href="{{ url_for('dashboard.analytics', days=30) }}" class="chip {% if range_mode == 'preset' and days == 30 %}active{% endif %}">30 días</a>
+        <a href="{{ url_for('dashboard.analytics', days=90) }}" class="chip {% if range_mode == 'preset' and days == 90 %}active{% endif %}">90 días</a>
       </div>
-      <div style="border-left:1px solid var(--border);padding-left:12px;display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
-        <div>
-          <label class="field-label" for="from">Desde</label>
-          <input class="input" type="date" id="from" name="from" value="{% if range_mode == 'custom' %}{{ from_str }}{% endif %}" style="width:150px;">
-        </div>
-        <div>
-          <label class="field-label" for="to">Hasta</label>
-          <input class="input" type="date" id="to" name="to" value="{% if range_mode == 'custom' %}{{ to_str }}{% endif %}" style="width:150px;">
-        </div>
+    </div>
+
+    <div class="filter-divider"></div>
+
+    <div class="filter-group">
+      <span class="filter-group-label">Rango personalizado</span>
+      <div class="filter-row">
+        <input class="input" type="date" id="from" name="from"
+               value="{% if range_mode == 'custom' %}{{ from_str }}{% endif %}"
+               aria-label="Desde" style="width:150px;">
+        <span class="filter-sep">→</span>
+        <input class="input" type="date" id="to" name="to"
+               value="{% if range_mode == 'custom' %}{{ to_str }}{% endif %}"
+               aria-label="Hasta" style="width:150px;">
         <button type="submit" class="btn primary">Aplicar</button>
       </div>
-      <div style="border-left:1px solid var(--border);padding-left:12px;">
-        <label class="field-label" for="backlog_days">Umbral backlog (días)</label>
-        <input class="input mono" type="number" id="backlog_days" name="backlog_days" min="1" max="90" value="{{ backlog_threshold }}" style="width:90px;">
+    </div>
+
+    <div class="filter-divider"></div>
+
+    <div class="filter-group">
+      <span class="filter-group-label">Umbral backlog</span>
+      <div class="filter-row">
+        <input class="input" type="number" id="backlog_days" name="backlog_days"
+               min="1" max="90" value="{{ backlog_threshold }}" style="width:80px;">
+        <span class="filter-unit">días</span>
       </div>
-    </form>
-  </div>
+    </div>
+  </form>
 </div>
 
 {# ═══════════════════════ Bloque 1: OPERATIVO ══════════════════════ #}
@@ -57,7 +71,7 @@
   <h2 style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Operativo</h2>
 </div>
 
-<div class="kpi-grid" style="margin-bottom:16px;">
+<div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px;">
   <div class="kpi {% if por_recoger > 0 %}alert{% endif %}">
     <div class="kpi-label">Por recoger en oficina {{ info_tip('Guías que según Notion están en "Por recoger (INFORMADO)" — el cliente debe pasar a recogerlas a la agencia CARGO EXPRESO. Acción: avisarle al cliente.') }}</div>
     <div class="kpi-value">{{ por_recoger }}</div>

@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% from "macros.html" import result_pill, carrier_badge %}
+{% from "macros.html" import result_pill, carrier_badge, crumbs %}
 {% from "partials/_pagination.html" import pagination_nav %}
 {% block title %}Buscar{% endblock %}
 {% block content %}
+{{ crumbs(['Operación', 'Buscar']) }}
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Buscar</div>

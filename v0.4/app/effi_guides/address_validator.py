@@ -45,6 +45,50 @@ def _normalize(text: str) -> str:
     return s
 
 
+# Palabras-clave que indican que un segmento separado por " / " es texto libre
+# del cliente (no un campo estructural Effi). Si están en los segmentos iniciales,
+# NO estripamos — el slash es parte de la dirección, no separador estructural.
+_FREE_TEXT_KEYWORDS = (
+    "calle", "avenida", "av.", "av ",
+    "frente", "atras", "cerca", "esquina", "lote", "km",
+    "casa", "apto", "apartamento", "edificio", "torre",
+    "iglesia", "ferreteria", "mercado", "tienda",
+)
+
+
+def _strip_effi_prefix(raw: str) -> tuple[str, str]:
+    """Separa el prefijo estructural Effi del texto libre del cliente.
+
+    Effi guarda direcciones con formato:
+        "Depto / Municipio / Localidad (Zona N) / texto libre"
+    donde los primeros 2-3 segmentos vienen de dropdowns (jerarquía administrativa)
+    y solo el último segmento es lo que el cliente realmente escribió.
+
+    Validar el string completo es engañoso: "Zona 4" del dropdown haría que
+    "6 avenida" sin más matchee Pattern B aunque la dirección real sea inentregable.
+
+    Returns:
+        (texto_libre, prefijo_estructural). Si no detecta formato Effi, devuelve
+        (raw, "") — la validación procede sobre el texto completo.
+    """
+    if " / " not in raw:
+        return raw, ""
+
+    parts = [p.strip() for p in raw.split(" / ") if p.strip()]
+    if len(parts) < 2:
+        return raw, ""
+
+    # Si algún segmento del prefijo candidato contiene texto libre real
+    # (palabras-clave de dirección), no estripamos — el slash es parte de la
+    # dirección del cliente, no separador estructural.
+    prefix_candidates = parts[:-1]
+    prefix_text = " ".join(prefix_candidates).lower()
+    if any(kw in prefix_text for kw in _FREE_TEXT_KEYWORDS):
+        return raw, ""
+
+    return parts[-1], " / ".join(prefix_candidates)
+
+
 # ── Patrón A: agencia / retiro en oficina ────────────────────────────────
 _RE_AGENCIA = re.compile(
     r"(cargo\s*expres(o|s|os)?\b"            # cargo expreso / cargo expres
@@ -142,7 +186,11 @@ _TRIVIAL_PATTERNS = [
 
 def validate_address(address: str | None) -> AddressResult:
     raw = (address or "").strip()
-    normalized = _normalize(raw)
+    # Effi guarda direcciones con prefijo estructural Depto/Muni/Localidad/...
+    # Validamos solo el texto libre del cliente — el prefijo Effi tiene datos
+    # útiles (zona postal, ciudad) pero NO debe satisfacer Pattern B por sí solo.
+    user_text, _effi_prefix = _strip_effi_prefix(raw)
+    normalized = _normalize(user_text)
 
     if not normalized:
         return AddressResult(

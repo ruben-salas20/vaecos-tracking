@@ -1,16 +1,18 @@
 {% extends "base.html" %}
+{% from "macros.html" import crumbs %}
 {% block title %}Creador guías{% endblock %}
 {% block content %}
+{{ crumbs(['Acciones', 'Creador guías']) }}
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Creador guías</div>
     <div class="page-sub">Automatización Orden → Remisión → Guía en Effi ERP.</div>
   </div>
-  <div class="row-actions">
+  <div class="page-actions">
+    <a href="{{ url_for('effi.audit_list') }}" class="btn">Audit log</a>
     <a href="{{ url_for('effi.queue_list') }}" class="btn">
       Cola humana{% if pending_queue %} <span class="pill warn" style="margin-left:6px;">{{ pending_queue }}</span>{% endif %}
     </a>
-    <a href="{{ url_for('effi.audit_list') }}" class="btn">Audit log</a>
   </div>
 </div>
 

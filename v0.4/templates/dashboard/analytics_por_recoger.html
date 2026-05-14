@@ -1,7 +1,12 @@
 {% extends "base.html" %}
-{% from "macros.html" import carrier_badge %}
+{% from "macros.html" import carrier_badge, crumbs %}
 {% block title %}Por recoger — Detalle{% endblock %}
 {% block content %}
+<div class="crumbs">
+  <a href="{{ url_for('dashboard.analytics') }}">Analytics</a>
+  <span class="sep">/</span>
+  <span>Por recoger</span>
+</div>
 <div class="page-head">
   <div class="page-title-block">
     <div class="page-title">Por recoger — Detalle</div>

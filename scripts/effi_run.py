@@ -24,6 +24,29 @@ from app.effi_guides.notifier import notify  # noqa: E402
 from app.effi_guides.runner import EffiRunner  # noqa: E402
 
 
+def _build_notion_provider():
+    """Construye NotionProvider desde V04Settings; None si faltan credenciales."""
+    try:
+        from app.config import load_settings as load_v04_settings
+        from vaecos_v02.providers.notion_provider import NotionProvider
+    except ImportError:
+        return None
+    try:
+        v04 = load_v04_settings(Path(__file__).resolve().parents[1] / "v0.4")
+    except Exception:
+        return None
+    if not getattr(v04, "notion_api_key", "") or not getattr(v04, "notion_data_source_id", ""):
+        return None
+    try:
+        return NotionProvider(
+            api_key=v04.notion_api_key,
+            notion_version=v04.notion_version,
+            data_source_id=v04.notion_data_source_id,
+        )
+    except Exception:
+        return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Procesa todas las órdenes Effi pendientes.")
     parser.add_argument("--apply", action="store_true",
@@ -37,7 +60,15 @@ def main() -> int:
         print(f"ERROR: no existe {settings.session_path}. Corré 'python scripts/effi_login.py'.")
         return 2
 
-    runner = EffiRunner(settings, dry_run=not args.apply)
+    # Wire opcionalmente Notion: si hay credenciales en .env, el bot crea la
+    # guía también en Notion automáticamente tras crearla en Effi.
+    notion_provider = _build_notion_provider()
+    if notion_provider is not None:
+        print("→ Notion: habilitado (auto-sync de guías nuevas a Notion).")
+    else:
+        print("→ Notion: deshabilitado (faltan NOTION_API_KEY o NOTION_DATA_SOURCE_ID).")
+
+    runner = EffiRunner(settings, dry_run=not args.apply, notion_provider=notion_provider)
     if not runner.catalog:
         print(f"ERROR: catálogo vacío. Cargá productos en /effi/catalog.")
         return 2
@@ -51,11 +82,19 @@ def main() -> int:
     try:
         with EffiBot(settings) as bot:
             if not bot.health_check():
-                notify(
-                    subject="Sesión Effi expirada",
-                    body="El bot no pudo entrar al ERP. Renová effi-session.json con scripts/effi_login.py.",
-                )
-                raise NotLoggedInError("Sesión expirada.")
+                print("⚠ Sesión Effi expirada — intentando re-login automático...")
+                if bot.try_auto_login() and bot.health_check():
+                    print("✓ Re-login automático exitoso — continuando corrida.")
+                else:
+                    notify(
+                        subject="Sesión Effi expirada — auto-login falló",
+                        body=(
+                            "El bot detectó sesión expirada e intentó re-loguear automáticamente "
+                            "pero falló (probable reCAPTCHA o credenciales rechazadas). "
+                            "Renová effi-session.json manualmente con scripts/effi_login.py."
+                        ),
+                    )
+                    raise NotLoggedInError("Sesión expirada y auto-login falló.")
 
             def on_progress(i, total, orden_id):
                 print(f"[{i}/{total}] procesando orden #{orden_id}...")
