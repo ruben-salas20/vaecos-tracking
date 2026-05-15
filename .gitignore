@@ -23,3 +23,6 @@ docs/notion-export/
 .playwright-cli/
 *-checkout.yaml
 *-after-submit.yaml
+
+# Archivo temporal del setup de env vars — tiene secretos, nunca commitear
+.env.upload

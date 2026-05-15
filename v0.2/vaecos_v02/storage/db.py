@@ -620,6 +620,85 @@ def seed_fin_categories(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
+def _ensure_effi_address_examples_table(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "effi_address_examples"):
+        return
+    connection.execute("""
+        CREATE TABLE effi_address_examples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            address TEXT NOT NULL,
+            veredicto TEXT NOT NULL
+                CHECK (veredicto IN ('valid', 'review', 'invalid')),
+            reason TEXT NOT NULL,
+            activo INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            created_by TEXT
+        )
+    """)
+    connection.execute("CREATE INDEX idx_effi_address_examples_activo ON effi_address_examples (activo)")
+    connection.commit()
+
+
+def seed_effi_address_examples(connection: sqlite3.Connection) -> None:
+    """Seed inicial de ejemplos few-shot para el validador IA de direcciones.
+
+    Idempotente: si la tabla ya tiene contenido, no toca nada. Estos 17 ejemplos
+    son los que estaban hardcodeados en address_ai_validator.py — desde acá se
+    pueden editar/ampliar vía /effi/address-examples sin tocar código.
+    """
+    if not _table_exists(connection, "effi_address_examples"):
+        return
+    count = connection.execute("SELECT COUNT(*) FROM effi_address_examples").fetchone()[0]
+    if count > 0:
+        return
+    from datetime import datetime as _datetime
+    now = _datetime.now().isoformat(timespec="seconds")
+    seed = [
+        ("5 calle 12-51 zona uno de mixco", "valid",
+         "Estructura urbana cardinal completa"),
+        ("Aldea El Florido frente a la iglesia católica, Escuintla", "valid",
+         "Aldea identificable con landmark claro"),
+        ("Cargo expreso Morales (retiro en agencia)", "valid",
+         "Retiro en agencia CARGO EXPRESO"),
+        ("9 Calle 0-54 zona 3 colonia las victorias enfrente a la vieja bodega de tecnoprosa", "valid",
+         "Dirección urbana cardinal con landmark"),
+        ("sentro comercial santa clara En el sentro comercial santa clara", "valid",
+         "Centro comercial Santa Clara identificable pese al typo"),
+        ("Frente a banco banrrural Pegado de la farmacia manuelita", "valid",
+         "Dos landmarks comerciales en el mismo punto"),
+        ("Frente de la escuela urbana Salida a antigua tutuapa", "review",
+         "Landmark y referencia pero municipio/colonia imprecisos"),
+        ("Saliendo de antigua para chimaltenango, despues de la 2da curva, casa del señor Pedro color celeste", "valid",
+         "Ruta clara entre 2 ciudades con casa específica identificable"),
+        ("Colonia la promesa La democracia", "review",
+         "Colonia genérica sin landmark ni estructura cardinal"),
+        ("Retalhuleu Caballo blanco", "invalid",
+         "Solo nombres de lugar sin referencia ni dirección"),
+        ("en mi casa", "invalid",
+         "Trivial sin ubicación concreta"),
+        ("Por ahi por las afueras Pregunten por mi", "invalid",
+         "Demasiado vago, sin referencia concreta"),
+        ("Guatemala / Guatemala / Guatemala (Zona 4) / 6 avenida Ferretería", "invalid",
+         'Texto libre es solo "6 avenida Ferretería" — sin número de inmueble ni ferretería con nombre'),
+        ("Guatemala / Mixco / Zona 1 / 5 calle 12-51 frente a la iglesia", "valid",
+         "Texto libre completo: calle + número de inmueble + landmark"),
+        ("Calle principal tienda", "invalid",
+         "Calle genérica, landmark sin nombre"),
+        ("5 avenida frente a la iglesia", "review",
+         "Avenida sin número ni zona; iglesia genérica sin nombre"),
+        ("zona 1 cerca del mercado", "review",
+         "Zona muy amplia, mercado genérico — qué mercado?"),
+    ]
+    for address, veredicto, reason in seed:
+        connection.execute(
+            """INSERT INTO effi_address_examples
+                (address, veredicto, reason, activo, created_at, created_by)
+               VALUES (?, ?, ?, 1, ?, 'seed')""",
+            (address, veredicto, reason, now),
+        )
+    connection.commit()
+
+
 def _ensure_ai_conversations_table(connection: sqlite3.Connection) -> None:
     if _table_exists(connection, "ai_conversations"):
         return
@@ -712,8 +791,10 @@ def _apply_migrations(connection: sqlite3.Connection) -> None:
     _ensure_ai_conversations_table(connection)
     _ensure_ai_messages_table(connection)
     _ensure_ai_audit_log_table(connection)
+    _ensure_effi_address_examples_table(connection)
     seed_effi_catalog(connection)
     seed_fin_categories(connection)
+    seed_effi_address_examples(connection)
 
 
 def _migrate_legacy_rules_table(connection: sqlite3.Connection) -> None:

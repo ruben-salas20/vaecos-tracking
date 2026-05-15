@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% from "macros.html" import crumbs %}
+{% block title %}Ejemplos del validador IA{% endblock %}
+
+{% macro veredicto_pill(v) -%}
+{%- if v == 'valid' -%}
+<span class="pill" style="background:#dcfce7;color:#166534;">valid</span>
+{%- elif v == 'review' -%}
+<span class="pill" style="background:#fef3c7;color:#92400e;">review</span>
+{%- else -%}
+<span class="pill" style="background:#fee2e2;color:#991b1b;">invalid</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+{{ crumbs(['Admin', 'Ejemplos del validador IA']) }}
+
+<div class="page-head">
+  <div class="page-title-block">
+    <div class="page-title">Ejemplos del validador IA de direcciones</div>
+    <div class="page-sub">
+      Estos ejemplos few-shot calibran a la IA cuando valida direcciones de Effi.
+      Agregá casos reales (sobre todo los que el bot escaló mal) y la validación mejora —
+      sin tocar código. Los cambios aplican desde la próxima corrida del bot.
+    </div>
+  </div>
+  <div class="page-actions">
+    <a href="{{ url_for('effi.dashboard') }}" class="btn">Volver al dashboard</a>
+  </div>
+</div>
+
+<div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;">
+  <div class="kpi">
+    <div class="kpi-label">Total</div>
+    <div class="kpi-value">{{ counts.total }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Activos</div>
+    <div class="kpi-value" style="color:#16a34a;">{{ counts.activos }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">valid</div>
+    <div class="kpi-value" style="color:#16a34a;">{{ counts.valid }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">review</div>
+    <div class="kpi-value" style="color:#d97706;">{{ counts.review }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">invalid</div>
+    <div class="kpi-value" style="color:#dc2626;">{{ counts.invalid }}</div>
+  </div>
+</div>
+
+{# ── Probar dirección ───────────────────────────────────────── #}
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-head"><div class="panel-title">🧪 Probar una dirección</div></div>
+  <div class="panel-body">
+    <p class="muted" style="font-size:13px;margin-bottom:10px;">
+      Escribí una dirección y mirá qué responde la IA con los ejemplos actuales.
+      Puede tardar 10-25 segundos (la IA razona).
+    </p>
+    <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;">
+      <input class="input" id="testAddress" type="text" style="flex:1;min-width:280px;"
+             placeholder="ej. Guatemala / Mixco / Zona 1 / 5 calle 12-51 frente a la iglesia">
+      <button type="button" id="testBtn" class="btn brand">Probar</button>
+    </div>
+    <div id="testResult" style="margin-top:12px;" hidden></div>
+  </div>
+</div>
+
+{# ── Agregar ejemplo nuevo ──────────────────────────────────── #}
+<div class="panel" style="margin-bottom:16px;">
+  <div class="panel-head"><div class="panel-title">+ Agregar ejemplo</div></div>
+  <div class="panel-body">
+    <form method="post" action="{{ url_for('effi.address_examples_create') }}"
+          style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+      <div style="flex:2;min-width:260px;">
+        <label class="form-label" for="new-address">Dirección</label>
+        <input class="input" id="new-address" type="text" name="address" required
+               placeholder="dirección de ejemplo, como llega de Effi">
+      </div>
+      <div>
+        <label class="form-label" for="new-veredicto">Veredicto</label>
+        <select class="input" id="new-veredicto" name="veredicto" required>
+          <option value="valid">valid</option>
+          <option value="review">review</option>
+          <option value="invalid">invalid</option>
+        </select>
+      </div>
+      <div style="flex:2;min-width:240px;">
+        <label class="form-label" for="new-reason">Razón (corta)</label>
+        <input class="input" id="new-reason" type="text" name="reason" required maxlength="200"
+               placeholder="por qué ese veredicto — máx 15 palabras">
+      </div>
+      <button type="submit" class="btn brand">Agregar</button>
+    </form>
+  </div>
+</div>
+
+{# ── Tabla de ejemplos ──────────────────────────────────────── #}
+<div class="panel">
+  <div class="panel-head"><div class="panel-title">Ejemplos ({{ examples | length }})</div></div>
+  <div class="panel-body flush">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th style="width:46px;">ID</th>
+          <th>Dirección</th>
+          <th style="width:90px;">Veredicto</th>
+          <th>Razón</th>
+          <th style="width:80px;">Estado</th>
+          <th style="width:230px;">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in examples %}
+        <tr style="{% if not e.activo %}opacity:.55;{% endif %}">
+          <td class="mono">{{ e.id }}</td>
+          <td>
+            <form method="post" action="{{ url_for('effi.address_examples_edit', ex_id=e.id) }}"
+                  id="edit-{{ e.id }}" style="margin:0;">
+              <input type="text" name="address" value="{{ e.address | e }}" class="input"
+                     style="height:30px;padding:3px 8px;font-size:12px;width:100%;" required>
+            </form>
+          </td>
+          <td>
+            <select name="veredicto" form="edit-{{ e.id }}" class="input"
+                    style="height:30px;padding:3px 6px;font-size:12px;">
+              <option value="valid"   {% if e.veredicto == 'valid' %}selected{% endif %}>valid</option>
+              <option value="review"  {% if e.veredicto == 'review' %}selected{% endif %}>review</option>
+              <option value="invalid" {% if e.veredicto == 'invalid' %}selected{% endif %}>invalid</option>
+            </select>
+          </td>
+          <td>
+            <input type="text" name="reason" value="{{ e.reason | e }}" form="edit-{{ e.id }}"
+                   class="input" style="height:30px;padding:3px 8px;font-size:12px;width:100%;"
+                   maxlength="200" required>
+          </td>
+          <td>
+            {% if e.activo %}
+            <span class="pill" style="background:#dcfce7;color:#166534;">activo</span>
+            {% else %}
+            <span class="pill" style="background:#f1f5f9;color:#64748b;">inactivo</span>
+            {% endif %}
+          </td>
+          <td>
+            <div style="display:flex;gap:5px;align-items:center;">
+              <button type="submit" form="edit-{{ e.id }}" class="btn btn-sm" title="Guardar cambios">✓ Guardar</button>
+              <form method="post" action="{{ url_for('effi.address_examples_toggle', ex_id=e.id) }}" style="margin:0;">
+                <button type="submit" class="btn btn-sm" title="{% if e.activo %}Desactivar{% else %}Activar{% endif %}">
+                  {% if e.activo %}🚫{% else %}✓{% endif %}
+                </button>
+              </form>
+              <form method="post" action="{{ url_for('effi.address_examples_delete', ex_id=e.id) }}"
+                    onsubmit="return confirm('¿Eliminar el ejemplo #{{ e.id }}? No se puede deshacer.');"
+                    style="margin:0;">
+                <button type="submit" class="btn btn-sm" style="background:#fef2f2;color:#dc2626;border-color:#fecaca;" title="Eliminar">🗑</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px;">Sin ejemplos.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div style="margin-top:14px;color:var(--muted);font-size:13px;">
+  <strong>Tip:</strong> los ejemplos <em>desactivados</em> no se le pasan a la IA, pero quedan
+  guardados por si querés reactivarlos. Si la tabla quedara vacía, el validador usa un set de
+  ejemplos por defecto incluido en el código — nunca se queda sin calibración.
+</div>
+
+<script>
+(function () {
+  var btn = document.getElementById('testBtn');
+  var input = document.getElementById('testAddress');
+  var out = document.getElementById('testResult');
+
+  function render(html, bg, border, color) {
+    out.hidden = false;
+    out.innerHTML = html;
+    out.style.cssText = 'margin-top:12px;padding:12px 14px;border-radius:6px;font-size:13px;'
+      + 'background:' + bg + ';border:1px solid ' + border + ';color:' + color + ';';
+  }
+
+  btn.addEventListener('click', function () {
+    var addr = input.value.trim();
+    if (!addr) { input.focus(); return; }
+    btn.disabled = true;
+    var oldLabel = btn.textContent;
+    btn.textContent = 'Evaluando…';
+    render('⏳ La IA está evaluando la dirección… (puede tardar hasta 25s)', '#f8fafc', '#e2e8f0', '#64748b');
+
+    fetch('{{ url_for("effi.address_examples_test") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: addr }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.ok) {
+        render('✗ ' + (d.error || 'Error desconocido'), '#fef2f2', '#fecaca', '#991b1b');
+        return;
+      }
+      var colors = {
+        valid:   ['#dcfce7', '#86efac', '#166534'],
+        review:  ['#fef3c7', '#fcd34d', '#92400e'],
+        invalid: ['#fee2e2', '#fca5a5', '#991b1b'],
+      };
+      var c = colors[d.status] || colors.invalid;
+      render(
+        '<strong>Veredicto: ' + d.status.toUpperCase() + '</strong><br>' +
+        '<span>' + d.reason + '</span><br>' +
+        '<span style="font-size:11px;opacity:.7;">modelo: ' + d.model + '</span>',
+        c[0], c[1], c[2]
+      );
+    })
+    .catch(function (e) {
+      render('✗ Error de red: ' + e.message, '#fef2f2', '#fecaca', '#991b1b');
+    })
+    .finally(function () {
+      btn.disabled = false;
+      btn.textContent = oldLabel;
+    });
+  });
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); btn.click(); }
+  });
+})();
+</script>
+{% endblock %}

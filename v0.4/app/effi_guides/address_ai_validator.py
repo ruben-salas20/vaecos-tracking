@@ -22,7 +22,10 @@ from dataclasses import dataclass
 from .address_validator import AddressResult, AddressValidation
 
 
-SYSTEM_PROMPT = (
+# ── Esqueleto del prompt (lógica estable — NO se edita desde la UI) ──────
+# Las instrucciones base: categorías, formato Effi, reglas. Si esto se rompe,
+# el validador entero falla — por eso vive en código, versionado.
+_PROMPT_HEAD = (
     "Eres un mensajero experimentado de CARGO EXPRESO en Guatemala. "
     "Tu trabajo es decidir si una dirección permite llegar al destino para entregar un paquete.\n\n"
     "Categorías:\n"
@@ -49,44 +52,61 @@ SYSTEM_PROMPT = (
     "Considera typos comunes en español guatemalteco (sentro=centro, kalle=calle, sona=zona, "
     "banrrural=Banrural, krk=cerca, kasa=casa, kuadras=cuadras, etc.). Acepta abreviaturas "
     "locales (z=zona, av=avenida).\n\n"
-    "EJEMPLOS DE REFERENCIA — calibrá tu juicio contra estos casos del negocio:\n\n"
-    'Dirección: "5 calle 12-51 zona uno de mixco"\n'
-    'Veredicto: {"status": "valid", "reason": "Estructura urbana cardinal completa"}\n\n'
-    'Dirección: "Aldea El Florido frente a la iglesia católica, Escuintla"\n'
-    'Veredicto: {"status": "valid", "reason": "Aldea identificable con landmark claro"}\n\n'
-    'Dirección: "Cargo expreso Morales (retiro en agencia)"\n'
-    'Veredicto: {"status": "valid", "reason": "Retiro en agencia CARGO EXPRESO"}\n\n'
-    'Dirección: "9 Calle 0-54 zona 3 colonia las victorias enfrente a la vieja bodega de tecnoprosa"\n'
-    'Veredicto: {"status": "valid", "reason": "Dirección urbana cardinal con landmark"}\n\n'
-    'Dirección: "sentro comercial santa clara En el sentro comercial santa clara"\n'
-    'Veredicto: {"status": "valid", "reason": "Centro comercial Santa Clara identificable pese al typo"}\n\n'
-    'Dirección: "Frente a banco banrrural Pegado de la farmacia manuelita"\n'
-    'Veredicto: {"status": "valid", "reason": "Dos landmarks comerciales en el mismo punto"}\n\n'
-    'Dirección: "Frente de la escuela urbana Salida a antigua tutuapa"\n'
-    'Veredicto: {"status": "review", "reason": "Landmark y referencia pero municipio/colonia imprecisos"}\n\n'
-    'Dirección: "Saliendo de antigua para chimaltenango, despues de la 2da curva, casa del señor Pedro color celeste"\n'
-    'Veredicto: {"status": "valid", "reason": "Ruta clara entre 2 ciudades con casa específica identificable"}\n\n'
-    'Dirección: "Colonia la promesa La democracia"\n'
-    'Veredicto: {"status": "review", "reason": "Colonia genérica sin landmark ni estructura cardinal"}\n\n'
-    'Dirección: "Retalhuleu Caballo blanco"\n'
-    'Veredicto: {"status": "invalid", "reason": "Solo nombres de lugar sin referencia ni dirección"}\n\n'
-    'Dirección: "en mi casa"\n'
-    'Veredicto: {"status": "invalid", "reason": "Trivial sin ubicación concreta"}\n\n'
-    'Dirección: "Por ahi por las afueras Pregunten por mi"\n'
-    'Veredicto: {"status": "invalid", "reason": "Demasiado vago, sin referencia concreta"}\n\n'
-    'Dirección: "Guatemala / Guatemala / Guatemala (Zona 4) / 6 avenida Ferretería"\n'
-    'Veredicto: {"status": "invalid", "reason": "Texto libre es solo \\"6 avenida Ferretería\\" — sin número de inmueble ni ferretería con nombre"}\n\n'
-    'Dirección: "Guatemala / Mixco / Zona 1 / 5 calle 12-51 frente a la iglesia"\n'
-    'Veredicto: {"status": "valid", "reason": "Texto libre completo: calle + número de inmueble + landmark"}\n\n'
-    'Dirección: "Calle principal tienda"\n'
-    'Veredicto: {"status": "invalid", "reason": "Calle genérica, landmark sin nombre"}\n\n'
-    'Dirección: "5 avenida frente a la iglesia"\n'
-    'Veredicto: {"status": "review", "reason": "Avenida sin número ni zona; iglesia genérica sin nombre"}\n\n'
-    'Dirección: "zona 1 cerca del mercado"\n'
-    'Veredicto: {"status": "review", "reason": "Zona muy amplia, mercado genérico — qué mercado?"}\n\n'
+    "EJEMPLOS DE REFERENCIA — calibrá tu juicio contra estos casos del negocio:"
+)
+
+_PROMPT_TAIL = (
     "Responde ÚNICAMENTE con un JSON en una sola línea, sin texto adicional:\n"
     '{"status": "valid|review|invalid", "reason": "razón breve en español, máximo 15 palabras"}'
 )
+
+# Ejemplos few-shot por defecto — fallback si la tabla effi_address_examples
+# está vacía o no se puede leer. La fuente normal de ejemplos es la DB
+# (tabla effi_address_examples, editable en /effi/address-examples).
+_DEFAULT_EXAMPLES: list[tuple[str, str, str]] = [
+    ("5 calle 12-51 zona uno de mixco", "valid", "Estructura urbana cardinal completa"),
+    ("Aldea El Florido frente a la iglesia católica, Escuintla", "valid", "Aldea identificable con landmark claro"),
+    ("Cargo expreso Morales (retiro en agencia)", "valid", "Retiro en agencia CARGO EXPRESO"),
+    ("9 Calle 0-54 zona 3 colonia las victorias enfrente a la vieja bodega de tecnoprosa", "valid", "Dirección urbana cardinal con landmark"),
+    ("sentro comercial santa clara En el sentro comercial santa clara", "valid", "Centro comercial Santa Clara identificable pese al typo"),
+    ("Frente a banco banrrural Pegado de la farmacia manuelita", "valid", "Dos landmarks comerciales en el mismo punto"),
+    ("Frente de la escuela urbana Salida a antigua tutuapa", "review", "Landmark y referencia pero municipio/colonia imprecisos"),
+    ("Saliendo de antigua para chimaltenango, despues de la 2da curva, casa del señor Pedro color celeste", "valid", "Ruta clara entre 2 ciudades con casa específica identificable"),
+    ("Colonia la promesa La democracia", "review", "Colonia genérica sin landmark ni estructura cardinal"),
+    ("Retalhuleu Caballo blanco", "invalid", "Solo nombres de lugar sin referencia ni dirección"),
+    ("en mi casa", "invalid", "Trivial sin ubicación concreta"),
+    ("Por ahi por las afueras Pregunten por mi", "invalid", "Demasiado vago, sin referencia concreta"),
+    ("Guatemala / Guatemala / Guatemala (Zona 4) / 6 avenida Ferretería", "invalid", 'Texto libre es solo "6 avenida Ferretería" — sin número de inmueble ni ferretería con nombre'),
+    ("Guatemala / Mixco / Zona 1 / 5 calle 12-51 frente a la iglesia", "valid", "Texto libre completo: calle + número de inmueble + landmark"),
+    ("Calle principal tienda", "invalid", "Calle genérica, landmark sin nombre"),
+    ("5 avenida frente a la iglesia", "review", "Avenida sin número ni zona; iglesia genérica sin nombre"),
+    ("zona 1 cerca del mercado", "review", "Zona muy amplia, mercado genérico — qué mercado?"),
+]
+
+
+def build_system_prompt(examples: list[tuple[str, str, str]] | None = None) -> str:
+    """Compone el system prompt: esqueleto + ejemplos few-shot + cierre.
+
+    `examples` es una lista de tuplas (address, veredicto, reason). Si es None
+    o vacía, usa los ejemplos default hardcodeados — el validador nunca queda
+    sin ejemplos.
+    """
+    if not examples:
+        examples = _DEFAULT_EXAMPLES
+    lines = [_PROMPT_HEAD, ""]
+    for address, veredicto, reason in examples:
+        # Escapar comillas dobles del reason para que el JSON de ejemplo sea válido.
+        safe_reason = (reason or "").replace('"', '\\"')
+        lines.append(f'Dirección: "{address}"')
+        lines.append(f'Veredicto: {{"status": "{veredicto}", "reason": "{safe_reason}"}}')
+        lines.append("")
+    lines.append(_PROMPT_TAIL)
+    return "\n".join(lines)
+
+
+# Prompt por defecto (con ejemplos hardcodeados) — alias de compatibilidad
+# para código/scripts que importaban SYSTEM_PROMPT.
+SYSTEM_PROMPT = build_system_prompt()
 
 
 @dataclass(frozen=True)
@@ -121,6 +141,7 @@ class MiniMaxAddressValidator:
         model: str = "MiniMax-M2.7",
         base_url: str = "https://api.minimax.io/v1",
         timeout_seconds: int = 15,
+        system_prompt: str | None = None,
     ):
         if not api_key:
             raise ValueError("MiniMaxAddressValidator requires api_key")
@@ -128,6 +149,9 @@ class MiniMaxAddressValidator:
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout_seconds
+        # system_prompt se arma desde los ejemplos de la DB; si no se pasa,
+        # usa el default con ejemplos hardcodeados.
+        self.system_prompt = system_prompt or SYSTEM_PROMPT
         self._cache: dict[str, AIValidationResult] = {}
 
     def evaluate(self, address: str) -> AIValidationResult | None:
@@ -157,7 +181,7 @@ class MiniMaxAddressValidator:
         body = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": f'Evalúa esta dirección guatemalteca:\n"{address}"'},
             ],
             "temperature": 0.1,
@@ -230,19 +254,51 @@ def _normalize_for_cache(text: str) -> str:
     return s
 
 
+def _load_examples_from_db(db_path) -> list[tuple[str, str, str]]:
+    """Lee los ejemplos few-shot ACTIVOS de la tabla effi_address_examples.
+
+    Si la tabla está vacía o la lectura falla, devuelve lista vacía — el
+    caller (build_system_prompt) cae a los _DEFAULT_EXAMPLES hardcodeados.
+    """
+    if not db_path:
+        return []
+    try:
+        import sqlite3
+        conn = sqlite3.connect(str(db_path))
+        try:
+            rows = conn.execute(
+                "SELECT address, veredicto, reason FROM effi_address_examples "
+                "WHERE activo = 1 ORDER BY veredicto, id"
+            ).fetchall()
+        finally:
+            conn.close()
+        return [(r[0], r[1], r[2]) for r in rows]
+    except Exception:
+        return []
+
+
 def build_validator_from_settings(settings) -> MiniMaxAddressValidator | None:
     """Factory: devuelve un MiniMaxAddressValidator si está habilitado y configurado.
 
     Si AI_ADDRESS_VALIDATION está off o falta MINIMAX_API_KEY, devuelve None
     y el runner usa solo regex.
+
+    Los ejemplos few-shot se leen de la tabla effi_address_examples (editable
+    en /effi/address-examples). Si la tabla está vacía, usa los default.
     """
     if not getattr(settings, "ai_address_validation", False):
         return None
     if not getattr(settings, "minimax_api_key", ""):
         return None
+
+    db_path = getattr(settings, "db_path", None)
+    examples = _load_examples_from_db(db_path)
+    system_prompt = build_system_prompt(examples)  # examples vacío → default
+
     return MiniMaxAddressValidator(
         api_key=settings.minimax_api_key,
         model=settings.minimax_model,
         base_url=settings.minimax_base_url,
         timeout_seconds=settings.minimax_timeout_seconds,
+        system_prompt=system_prompt,
     )

@@ -96,6 +96,10 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
         <span>Catálogo finanzas</span>
       </a>
+      <a href="{{ url_for('effi.address_examples_list') }}" data-label="Validador IA direcciones" class="nav-item {% if active_endpoint in ['effi.address_examples_list', 'effi.address_examples_create', 'effi.address_examples_edit', 'effi.address_examples_toggle', 'effi.address_examples_delete'] %}active{% endif %}">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        <span>Validador IA direcciones</span>
+      </a>
     </div>
     {% endif %}
   </nav>

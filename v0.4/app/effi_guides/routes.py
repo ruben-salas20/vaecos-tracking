@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, abort, jsonify
 
 from ..auth.decorators import login_required, admin_required
+from .address_examples_repo import AddressExamplesRepository, VALID_VEREDICTOS
 from .catalog_repo import CatalogRepository, VALID_TIPOS, parse_aliases_textarea
 from .jobs import create_job, dispatch_effi_run, get_job
 from .orders_repo import (
@@ -18,6 +19,10 @@ effi_bp = Blueprint("effi", __name__, url_prefix="/effi")
 
 def _get_catalog_repo() -> CatalogRepository:
     return CatalogRepository(current_app.config["DB_PATH"])
+
+
+def _get_address_examples_repo() -> AddressExamplesRepository:
+    return AddressExamplesRepository(current_app.config["DB_PATH"])
 
 
 def _get_orders_repo() -> EffiOrdersRepository:
@@ -251,3 +256,116 @@ def catalog_delete(item_id: int):
     repo.delete(item_id)
     flash(f"Producto '{item.sku}' eliminado.", "ok")
     return redirect(url_for("effi.catalog_list"))
+
+
+# ── Ejemplos del validador IA de direcciones ───────────────────────
+
+@effi_bp.route("/address-examples")
+@admin_required
+def address_examples_list():
+    repo = _get_address_examples_repo()
+    return render_template(
+        "effi_guides/address_examples.html",
+        examples=repo.list_all(),
+        counts=repo.counts(),
+        veredictos=VALID_VEREDICTOS,
+    )
+
+
+@effi_bp.route("/address-examples", methods=["POST"])
+@admin_required
+def address_examples_create():
+    address = (request.form.get("address") or "").strip()
+    veredicto = (request.form.get("veredicto") or "").strip()
+    reason = (request.form.get("reason") or "").strip()
+    if not address or not reason:
+        flash("Dirección y razón son obligatorias.", "error")
+        return redirect(url_for("effi.address_examples_list"))
+    if veredicto not in VALID_VEREDICTOS:
+        flash("Veredicto inválido.", "error")
+        return redirect(url_for("effi.address_examples_list"))
+    new_id = _get_address_examples_repo().create(
+        address=address, veredicto=veredicto, reason=reason,
+        created_by=session.get("user_email", "admin"),
+    )
+    if new_id:
+        flash(f"Ejemplo #{new_id} agregado. Aplica desde la próxima corrida del bot.", "ok")
+    else:
+        flash("No se pudo agregar el ejemplo.", "error")
+    return redirect(url_for("effi.address_examples_list"))
+
+
+@effi_bp.route("/address-examples/<int:ex_id>/edit", methods=["POST"])
+@admin_required
+def address_examples_edit(ex_id: int):
+    address = (request.form.get("address") or "").strip()
+    veredicto = (request.form.get("veredicto") or "").strip()
+    reason = (request.form.get("reason") or "").strip()
+    if not address or not reason or veredicto not in VALID_VEREDICTOS:
+        flash("Datos inválidos — revisá dirección, veredicto y razón.", "error")
+        return redirect(url_for("effi.address_examples_list"))
+    ok = _get_address_examples_repo().update(
+        ex_id, address=address, veredicto=veredicto, reason=reason,
+    )
+    flash(f"Ejemplo #{ex_id} actualizado." if ok else "Ejemplo no encontrado.",
+          "ok" if ok else "error")
+    return redirect(url_for("effi.address_examples_list"))
+
+
+@effi_bp.route("/address-examples/<int:ex_id>/toggle", methods=["POST"])
+@admin_required
+def address_examples_toggle(ex_id: int):
+    new_state = _get_address_examples_repo().toggle(ex_id)
+    if new_state is None:
+        flash("Ejemplo no encontrado.", "error")
+    else:
+        flash(f"Ejemplo #{ex_id} {'activado' if new_state else 'desactivado'}.", "ok")
+    return redirect(url_for("effi.address_examples_list"))
+
+
+@effi_bp.route("/address-examples/<int:ex_id>/delete", methods=["POST"])
+@admin_required
+def address_examples_delete(ex_id: int):
+    ok = _get_address_examples_repo().delete(ex_id)
+    flash(f"Ejemplo #{ex_id} eliminado." if ok else "Ejemplo no encontrado.",
+          "ok" if ok else "error")
+    return redirect(url_for("effi.address_examples_list"))
+
+
+@effi_bp.route("/address-examples/test", methods=["POST"])
+@admin_required
+def address_examples_test():
+    """Prueba una dirección contra el validador IA en vivo. Devuelve JSON.
+
+    Usa los ejemplos ACTUALES de la DB (incluyendo los recién agregados).
+    Puede tardar 10-25s — el cliente muestra un spinner.
+    """
+    data = request.get_json(silent=True) or {}
+    address = (data.get("address") or "").strip()
+    if not address:
+        return jsonify({"ok": False, "error": "Dirección vacía."}), 400
+
+    try:
+        from .effi_config import load_settings
+        from .address_ai_validator import build_validator_from_settings
+        settings = load_settings()
+        validator = build_validator_from_settings(settings)
+        if validator is None:
+            return jsonify({
+                "ok": False,
+                "error": "Validador IA no disponible (falta MINIMAX_API_KEY o AI_ADDRESS_VALIDATION off).",
+            }), 503
+        result = validator.evaluate(address)
+        if result is None:
+            return jsonify({
+                "ok": False,
+                "error": "La IA no devolvió resultado (timeout o error de parseo). Reintentá.",
+            })
+        return jsonify({
+            "ok": True,
+            "status": result.status.value,
+            "reason": result.reason,
+            "model": result.model,
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
