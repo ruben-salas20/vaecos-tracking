@@ -11,7 +11,7 @@ Aplicación web multi-usuario en producción en `https://app.vaecos.com`.
 
 ## Estado actual (2026-05-14)
 
-- **Producción**: `https://app.vaecos.com` — Hostinger VPS + Caddy (TLS automático) + systemd + Waitress
+- **Producción**: `https://app.vaecos.com` — AWS EC2 (puente temporal) + Caddy (TLS automático) + systemd + Waitress
 - **Interfaz principal**: v0.4 (Flask + auth + dark mode + UI refresh completo + finanzas + IA)
 - **Tracking** (Fase 2 — parcial): motor lee desde local, edición de campos, alta/archivo/restauración entregados. Pendiente 2.4 (inversión de polaridad).
 - **Creador guías Effi** (Fase 3): módulo completo end-to-end (catálogo con aliases, classifier, address regex+IA, bot Playwright, cola humana, audit log, trigger UI/cron, digest diario por email, auto-relogin).
@@ -236,23 +236,27 @@ python scripts/import_finanzas_notion.py --csv "docs/notion-export/finanzas-2025
 # Re-correr es idempotente — usa external_ref UNIQUE (hash determinista por fila)
 ```
 
-## Producción — VPS
+## Producción — Servidor
+
+> ⚠️ **Puente temporal (desde 2026-05-16):** corre en AWS EC2 bajo free tier (~6 meses). El VPS
+> original de Hostinger se canceló por costo. El destino definitivo lo decidirá el equipo antes
+> de ~mediados de noviembre 2026. Detalles completos en `CLAUDE.md` → "Production deploy".
 
 | | |
 |---|---|
 | URL | `https://app.vaecos.com` |
-| VPS | Hostinger KVM 2 — Ubuntu 24.04 LTS |
+| Servidor | AWS EC2 `t3.small` — `us-east-1` — Ubuntu 24.04 LTS — IP `23.22.103.64` |
 | App user | `vaecos` (sudo NOPASSWD), código en `/opt/vaecos/` |
 | Servicio | systemd `vaecos.service` → `waitress-serve --listen=127.0.0.1:8765 --threads=4 wsgi:application` |
 | Proxy | Caddy con TLS automático (Let's Encrypt) |
-| Firewall | UFW: 22 / 80 / 443 |
+| Firewall | AWS Security Group: 22 / 80 / 443 |
 | Backups | `sqlite3 .backup` + gzip diario 3am UTC, retención 14 días (`/opt/vaecos/backups/`) |
 
 ### Deploy de un cambio
 
 ```powershell
 git add . ; git commit -m "..." ; git push
-ssh -i $env:USERPROFILE\.ssh\vaecos_vps vaecos@2.24.206.197 "cd /opt/vaecos && git pull && sudo systemctl restart vaecos"
+ssh -i $env:USERPROFILE\.ssh\vaecos_vps vaecos@23.22.103.64 "cd /opt/vaecos && git pull && sudo systemctl restart vaecos"
 # Si cambió requirements.txt, agregar: && .venv/bin/pip install -r v0.4/requirements.txt
 ```
 

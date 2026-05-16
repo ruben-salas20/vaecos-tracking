@@ -287,35 +287,44 @@ Para extender el manual del asistente:
 
 ## Production deploy (live)
 
-URL: `https://app.vaecos.com` (deploy 2026-05-07).
+URL: `https://app.vaecos.com`.
+
+> ⚠️ **PUENTE TEMPORAL (desde 2026-05-16).** El VPS original de Hostinger se canceló por costo.
+> La app corre en **AWS EC2** bajo el free tier (~$200 de crédito / ~6 meses → vence ~mediados de
+> noviembre 2026). El equipo debe decidir el destino DEFINITIVO antes de esa fecha; habrá una
+> 2da migración. El servidor viejo de Hostinger (`2.24.206.197`) quedó congelado como respaldo
+> hasta que su suscripción expire.
 
 | | |
 |---|---|
-| VPS | Hostinger KVM 2 — IP `2.24.206.197` — Ubuntu 24.04 LTS |
-| App user | `vaecos` (sudo NOPASSWD), code at `/opt/vaecos/`, venv at `/opt/vaecos/.venv/` |
+| Servidor | **AWS EC2 `t3.small`** (2 vCPU / 2 GB) — IP elástica `23.22.103.64` — región `us-east-1` — Ubuntu 24.04 LTS |
+| SSH user | `ubuntu` (default AWS, sudo NOPASSWD) o `vaecos` (sudo NOPASSWD) — ambos con la llave `~/.ssh/vaecos_vps` |
+| App user | `vaecos` (corre el servicio), code at `/opt/vaecos/`, venv at `/opt/vaecos/.venv/` |
 | Service | systemd `vaecos.service` running `waitress-serve --listen=127.0.0.1:8765 --threads=4 wsgi:application` |
 | Reverse proxy | Caddy with auto TLS (Let's Encrypt) at `/etc/caddy/Caddyfile` |
-| Firewall | UFW: only `22/80/443` |
-| SSH | Key-only — local key at `~/.ssh/vaecos_vps` (PC dueño) |
+| Firewall | AWS Security Group: solo `22/80/443` |
+| SSH | Key-only — local key at `~/.ssh/vaecos_vps` (PC dueño); en AWS importada como key pair `vaecos-deploy` |
+| RAM | 2 GB + **swap 2 GB** (`/swapfile`) — colchón para Chromium del bot Effi |
 | DB | `/opt/vaecos/data/vaecos_tracking.db` (WAL) |
 | Secrets | `/opt/vaecos/.env` (chmod 600) — `FLASK_SECRET_KEY`, `NOTION_API_KEY`, etc. |
 | ProxyFix | Active only when `VAECOS_ENV=production` for correct rate-limiting IPs |
 | Backups | `/opt/vaecos/backups/vaecos_<ts>.db.gz` — daily 3am UTC via cron, 14-day retention. Log: `/opt/vaecos/backups/backup.log` |
+| DNS | `app.vaecos.com` → A record gestionado en Hostinger (el dominio sigue ahí), apunta a la IP elástica de AWS |
 
 ### Deploy a code change
 
 ```powershell
 # From the dueño's PC (Windows):
 git add . ; git commit -m "..." ; git push
-ssh -i $env:USERPROFILE\.ssh\vaecos_vps vaecos@2.24.206.197 "cd /opt/vaecos && git pull && sudo systemctl restart vaecos"
+ssh -i $env:USERPROFILE\.ssh\vaecos_vps vaecos@23.22.103.64 "cd /opt/vaecos && git pull && sudo systemctl restart vaecos"
 # If requirements.txt changed, add: && .venv/bin/pip install -r v0.4/requirements.txt
 ```
 
 ### Operate the VPS
 
 ```powershell
-# SSH in as vaecos (preferred) or root
-ssh -i $env:USERPROFILE\.ssh\vaecos_vps vaecos@2.24.206.197
+# SSH in as vaecos (preferred) or ubuntu
+ssh -i $env:USERPROFILE\.ssh\vaecos_vps vaecos@23.22.103.64
 
 # Inside the VPS:
 sudo systemctl status vaecos          # service status
@@ -328,8 +337,8 @@ sudo systemctl restart vaecos          # restart app
 
 When the operator hands over her local `vaecos_tracking.db`:
 ```powershell
-scp -i $env:USERPROFILE\.ssh\vaecos_vps "ruta\operadora.db" vaecos@2.24.206.197:/opt/vaecos/data/operator.db
-ssh -i $env:USERPROFILE\.ssh\vaecos_vps vaecos@2.24.206.197 "sudo systemctl stop vaecos && \
+scp -i $env:USERPROFILE\.ssh\vaecos_vps "ruta\operadora.db" vaecos@23.22.103.64:/opt/vaecos/data/operator.db
+ssh -i $env:USERPROFILE\.ssh\vaecos_vps vaecos@23.22.103.64 "sudo systemctl stop vaecos && \
   mv /opt/vaecos/data/vaecos_tracking.db /opt/vaecos/data/vaecos_tracking.db.fresh-bootstrap && \
   mv /opt/vaecos/data/operator.db /opt/vaecos/data/vaecos_tracking.db && \
   cd /opt/vaecos && .venv/bin/python scripts/post_restore.py --skip-bootstrap && \
@@ -358,14 +367,14 @@ sudo systemctl start vaecos
 
 Backup manual on-demand: `/opt/vaecos/scripts/backup_db.sh`
 
-### Hostinger MCP (DNS + VPS management)
+### Hostinger MCP (solo DNS)
 
-The Hostinger MCP is available at `mcp__hostinger__*` tools. Useful operations:
+El dominio `vaecos.com` sigue gestionado en Hostinger, así que el Hostinger MCP (`mcp__hostinger__*`)
+sirve para el DNS. Los tools de VPS (`VPS_*`) ya **no aplican** — el servidor está en AWS.
 
-- `VPS_getVirtualMachineDetailsV1` — VPS info
-- `VPS_getMetricsV1` — CPU/memory metrics
-- `VPS_createSnapshotV1` — manual snapshot before risky changes
-- `DNS_getDNSRecordsV1` / `DNS_updateDNSRecordsV1` — manage DNS records (always use `overwrite=false` to avoid wiping existing records)
+- `DNS_getDNSRecordsV1` / `DNS_updateDNSRecordsV1` — gestionar registros DNS (usar siempre `overwrite=false` para no borrar registros existentes)
+
+El registro relevante: `app` (tipo A) → IP elástica de AWS `23.22.103.64`, TTL 300.
 
 ### SSH gotcha — first-match-wins
 
